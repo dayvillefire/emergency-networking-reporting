@@ -62,6 +62,28 @@ type ReportStats struct {
 	DroneTeamPct   float64
 	RehabTeamCount int
 	RehabTeamPct   float64
+
+	// Monthly breakdowns for charting (quarter/year reports)
+	Monthly []MonthlyStats
+}
+
+// MonthlyStats holds per-month breakdowns for charting.
+type MonthlyStats struct {
+	Month              string
+	EMS                int
+	Fire               int
+	AvgPersonnel       float64
+	DispatchToEnRoute  float64
+	DispatchToArrival  float64
+	TimeOnScene        float64
+	Concurrent         int
+	MutualAidGiven     int
+	MutualAidReceived  int
+	Hazmat             int
+	MVA                int
+	CO                 int
+	DroneTeam          int
+	RehabTeam          int
 }
 
 // ComputeStats runs all report calculations on the filtered incidents.
@@ -89,8 +111,129 @@ func ComputeStats(incidents []enapi.NerisIncident, deptName string, start, end t
 	computeByShift(s, incidents)
 	computeSpecialTypes(s, incidents)
 	computeSpecialUnits(s, incidents)
+	computeMonthly(s, incidents)
 
 	return s
+}
+
+func computeMonthly(s *ReportStats, incidents []enapi.NerisIncident) {
+	months := monthsInRange(s.PeriodStart, s.PeriodEnd)
+	if len(months) <= 1 {
+		return
+	}
+	for _, m := range months {
+		ms := MonthlyStats{Month: m.Format("January")}
+		var bucket []enapi.NerisIncident
+		mEnd := time.Date(m.Year(), m.Month()+1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second)
+		for _, inc := range incidents {
+			t := inc.IncidentPsapTime.Time
+			if !t.IsZero() && (t.Equal(m) || t.After(m)) && t.Before(mEnd.Add(24*time.Hour)) {
+				bucket = append(bucket, inc)
+			}
+		}
+		if len(bucket) == 0 {
+			s.Monthly = append(s.Monthly, ms)
+			continue
+		}
+		// EMS vs Fire
+		for _, inc := range bucket {
+			if isEMS(inc) {
+				ms.EMS++
+			} else {
+				ms.Fire++
+			}
+		}
+		// Personnel
+		var tp, cwp int
+		for _, inc := range bucket {
+			cp := 0
+			for _, u := range inc.Units {
+				n, _ := strconv.Atoi(string(u.UnitNumberOfPersonnel))
+				if n > 0 { cp += n }
+			}
+			if cp == 0 { cp = len(inc.Personnel) }
+			if cp > 0 { tp += cp; cwp++ }
+		}
+		if cwp > 0 { ms.AvgPersonnel = float64(tp) / float64(cwp) }
+		// Response times
+		ms.DispatchToEnRoute, ms.DispatchToArrival, ms.TimeOnScene = monthlyResponseTimes(bucket)
+		// Concurrent
+		ms.Concurrent = countConcurrent(bucket)
+		// Mutual aid
+		for _, inc := range bucket {
+			if strings.ToLower(string(inc.MutualAidGivenOrReceived)) == "yes" {
+				switch strings.ToLower(string(inc.MutualAidDirection)) {
+				case "given": ms.MutualAidGiven++
+				case "received": ms.MutualAidReceived++
+				}
+			}
+		}
+		// Special types
+		for _, inc := range bucket {
+			pt := strings.ToLower(string(inc.PrimaryIncidentType))
+			disp := strings.ToLower(string(inc.IncidentDispatchedAs))
+			if strings.Contains(pt, "fuel") || strings.Contains(pt, "hazmat") || strings.Contains(pt, "hazardous") || strings.Contains(disp, "fuel") || strings.Contains(disp, "hazmat") { ms.Hazmat++ }
+			if strings.HasPrefix(disp, "[mva]") || strings.Contains(pt, "motor vehicle") || strings.Contains(pt, "vehicle fire") { ms.MVA++ }
+			if strings.Contains(pt, "carbon monoxide") || strings.Contains(disp, "carbon monoxide") { ms.CO++ }
+		}
+		// Special units
+		for _, inc := range bucket {
+			for _, u := range inc.Units {
+				if strings.Contains(strings.ToUpper(string(u.UnitName)), "UAV163") { ms.DroneTeam++; break }
+			}
+			for _, u := range inc.Units {
+				if strings.Contains(strings.ToUpper(string(u.UnitName)), "S263") { ms.RehabTeam++; break }
+			}
+		}
+		s.Monthly = append(s.Monthly, ms)
+	}
+}
+
+func monthsInRange(start, end time.Time) []time.Time {
+	var months []time.Time
+	m := time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, time.UTC)
+	for !m.After(end) {
+		months = append(months, m)
+		m = m.AddDate(0, 1, 0)
+	}
+	return months
+}
+
+func monthlyResponseTimes(incidents []enapi.NerisIncident) (enRoute, arrival, scene float64) {
+	var dToE, dToA, onS []float64
+	zero := time.Time{}
+	for _, inc := range incidents {
+		if inc.IncidentDispatchTime.Time != zero && inc.IncidentEnrouteTime.Time != zero {
+			if d := inc.IncidentEnrouteTime.Time.Sub(inc.IncidentDispatchTime.Time).Seconds(); d > 0 { dToE = append(dToE, d) }
+		}
+		if inc.IncidentDispatchTime.Time != zero && inc.IncidentArrivalTime.Time != zero {
+			if d := inc.IncidentArrivalTime.Time.Sub(inc.IncidentDispatchTime.Time).Seconds(); d > 0 { dToA = append(dToA, d) }
+		}
+		if inc.IncidentArrivalTime.Time != zero && inc.IncidentClearTime.Time != zero {
+			if d := inc.IncidentClearTime.Time.Sub(inc.IncidentArrivalTime.Time).Seconds(); d > 0 { onS = append(onS, d) }
+		}
+	}
+	return trimmedMean(dToE), trimmedMean(dToA), trimmedMean(onS)
+}
+
+func countConcurrent(incidents []enapi.NerisIncident) int {
+	zero := time.Time{}
+	type interval struct{ start, end time.Time }
+	intervals := make([]interval, 0, len(incidents))
+	for _, inc := range incidents {
+		if inc.IncidentPsapTime.Time == zero || inc.IncidentClearTime.Time == zero { continue }
+		intervals = append(intervals, interval{inc.IncidentPsapTime.Time, inc.IncidentClearTime.Time})
+	}
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i].start.Before(intervals[j].start) })
+	concurrent := make(map[int]bool)
+	for i := range intervals {
+		for j := i + 1; j < len(intervals); j++ {
+			if intervals[j].start.Before(intervals[i].end) || intervals[j].start.Equal(intervals[i].end) {
+				concurrent[i] = true; concurrent[j] = true
+			} else { break }
+		}
+	}
+	return len(concurrent)
 }
 
 func isEMS(inc enapi.NerisIncident) bool {

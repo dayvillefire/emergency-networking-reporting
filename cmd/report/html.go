@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -15,6 +16,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{displayName .DeptName}} Report — {{displayName .PeriodLabel}}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fa; padding: 2rem; }
@@ -32,10 +34,12 @@ const htmlTemplate = `<!DOCTYPE html>
   th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #eee; }
   th { font-weight: 600; color: #555; font-size: 0.85rem; text-transform: uppercase; }
   td { font-size: 0.95rem; }
-  .bar { display: inline-block; height: 8px; border-radius: 4px; background: #c41e3a; vertical-align: middle; margin-right: 0.5rem; }
-  .bar-bg { display: inline-block; width: 100px; height: 8px; border-radius: 4px; background: #eee; vertical-align: middle; margin-right: 0.5rem; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+  .chart-box { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .chart-box h3 { font-size: 1rem; color: #c41e3a; margin-bottom: 0.75rem; }
+  .chart-box canvas { max-height: 280px; }
   footer { text-align: center; color: #999; font-size: 0.85rem; margin-top: 2rem; }
-  @media print { body { padding: 0; } .card, section { box-shadow: none; border: 1px solid #ddd; } }
+  @media print { body { padding: 0; } .card, section, .chart-box { box-shadow: none; border: 1px solid #ddd; } }
 </style>
 </head>
 <body>
@@ -66,6 +70,69 @@ const htmlTemplate = `<!DOCTYPE html>
   </div>
 </div>
 
+{{if .ShowCharts}}
+<section>
+  <h2>Monthly Trends</h2>
+  <div class="charts">
+    <div class="chart-box"><h3>Call Volume</h3><canvas id="chart-calls"></canvas></div>
+    <div class="chart-box"><h3>Average Personnel</h3><canvas id="chart-personnel"></canvas></div>
+    <div class="chart-box"><h3>Response Times (seconds)</h3><canvas id="chart-times"></canvas></div>
+    <div class="chart-box"><h3>Concurrent Calls</h3><canvas id="chart-concurrent"></canvas></div>
+    <div class="chart-box"><h3>Mutual Aid</h3><canvas id="chart-mutual-aid"></canvas></div>
+    <div class="chart-box"><h3>Special Incident Types</h3><canvas id="chart-special-types"></canvas></div>
+    <div class="chart-box"><h3>Special Unit Responses</h3><canvas id="chart-special-units"></canvas></div>
+  </div>
+</section>
+
+<script>
+const monthly = {{.ChartJSON}};
+const months = monthly.map(m => m.Month);
+const colors = { ems: '#2563eb', fire: '#c41e3a', dr: '#22c55e', da: '#f59e0b', os: '#8b5cf6', given: '#22c55e', received: '#f59e0b', hazmat: '#ef4444', mva: '#f97316', co: '#6366f1', drone: '#06b6d4', rehab: '#a855f7' };
+
+function mkLine(id, label, data, color) {
+  new Chart(document.getElementById(id), {
+    type: 'line', data: { labels: months, datasets: [{ label, data, borderColor: color, backgroundColor: color+'20', fill: true, tension: 0.3 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function mkBar(id, datasets) {
+  new Chart(document.getElementById(id), {
+    type: 'bar', data: { labels: months, datasets }, options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+  });
+}
+
+mkBar('chart-calls', [
+  { label: 'EMS', data: monthly.map(m => m.EMS), backgroundColor: colors.ems },
+  { label: 'Fire', data: monthly.map(m => m.Fire), backgroundColor: colors.fire }
+]);
+mkLine('chart-personnel', 'Avg Personnel', monthly.map(m => m.AvgPersonnel), '#2563eb');
+new Chart(document.getElementById('chart-times'), {
+  type: 'line',
+  data: { labels: months, datasets: [
+    { label: 'Disp→EnRoute', data: monthly.map(m => m.DispatchToEnRoute), borderColor: colors.dr, backgroundColor: colors.dr+'20', fill: true, tension: 0.3 },
+    { label: 'Disp→Arrival', data: monthly.map(m => m.DispatchToArrival), borderColor: colors.da, backgroundColor: colors.da+'20', fill: true, tension: 0.3 },
+    { label: 'On Scene',     data: monthly.map(m => m.TimeOnScene),     borderColor: colors.os, backgroundColor: colors.os+'20', fill: true, tension: 0.3 }
+  ]},
+  options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+});
+mkLine('chart-concurrent', 'Concurrent Calls', monthly.map(m => m.Concurrent), '#ef4444');
+mkBar('chart-mutual-aid', [
+  { label: 'Given', data: monthly.map(m => m.MutualAidGiven), backgroundColor: colors.given },
+  { label: 'Received', data: monthly.map(m => m.MutualAidReceived), backgroundColor: colors.received }
+]);
+mkBar('chart-special-types', [
+  { label: 'Hazmat', data: monthly.map(m => m.Hazmat), backgroundColor: colors.hazmat },
+  { label: 'MVA', data: monthly.map(m => m.MVA), backgroundColor: colors.mva },
+  { label: 'CO', data: monthly.map(m => m.CO), backgroundColor: colors.co }
+]);
+mkBar('chart-special-units', [
+  { label: 'Drone (UAV163)', data: monthly.map(m => m.DroneTeam), backgroundColor: colors.drone },
+  { label: 'Rehab (S263)', data: monthly.map(m => m.RehabTeam), backgroundColor: colors.rehab }
+]);
+</script>
+{{end}}
+
 <section>
   <h2>Response Times</h2>
   <table>
@@ -88,7 +155,6 @@ const htmlTemplate = `<!DOCTYPE html>
     <tr><td>Given</td><td>{{.MutualAidGiven}}</td><td>{{printf "%.1f" .MutualAidGivenPct}}%</td></tr>
     <tr><td>Received</td><td>{{.MutualAidReceived}}</td><td>{{printf "%.1f" .MutualAidReceivedPct}}%</td></tr>
   </table>
-
   <h3 style="margin-top: 1.25rem;">Given &mdash; by District</h3>
   <table>
     <tr><th>District</th><th>Count</th></tr>
@@ -174,11 +240,19 @@ var funcMap = template.FuncMap{
 }
 
 // GenerateHTML renders the report as HTML and returns it as a string.
-func GenerateHTML(s *ReportStats, periodLabel string) (string, error) {
+func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool) (string, error) {
+	chartJSON := "[]"
+	if showCharts && len(s.Monthly) > 0 {
+		b, _ := json.Marshal(s.Monthly)
+		chartJSON = string(b)
+	}
+
 	data := struct {
 		*ReportStats
 		PeriodLabel string
-	}{s, periodLabel}
+		ShowCharts  bool
+		ChartJSON   template.JS
+	}{s, periodLabel, showCharts, template.JS(chartJSON)}
 
 	tmpl, err := template.New("report").Funcs(funcMap).Parse(htmlTemplate)
 	if err != nil {
@@ -192,8 +266,8 @@ func GenerateHTML(s *ReportStats, periodLabel string) (string, error) {
 }
 
 // SaveHTML writes the HTML report to a file named <dept>_<period>.html.
-func SaveHTML(s *ReportStats, periodLabel string) (string, error) {
-	html, err := GenerateHTML(s, periodLabel)
+func SaveHTML(s *ReportStats, periodLabel string, showCharts bool) (string, error) {
+	html, err := GenerateHTML(s, periodLabel, showCharts)
 	if err != nil {
 		return "", err
 	}

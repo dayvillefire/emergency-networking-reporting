@@ -349,8 +349,10 @@ func processStats(m model) tea.Cmd {
 			deptName = majority
 		}
 		periodLabel := periodString(m.periodStart, m.periodEnd)
+			showCharts := m.periodEnd.Year() > m.periodStart.Year() ||
+				m.periodEnd.Month() > m.periodStart.Month()
 		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd)
-		htmlPath, err := SaveHTML(stats, periodLabel)
+		htmlPath, err := SaveHTML(stats, periodLabel, showCharts)
 		if err != nil {
 			return statsErrMsg{err}
 		}
