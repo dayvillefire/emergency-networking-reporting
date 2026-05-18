@@ -1,0 +1,6 @@
+.env
+*.html
+en-report
+en-report.exe
+.playwright-mcp/
+.remember/
