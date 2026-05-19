@@ -22,6 +22,7 @@ const (
 	stateSelectingDept
 	stateSelectingYear
 	stateSelectingScope
+	stateSelectingOptions
 	stateFetchingIncidents
 	stateProcessing
 	stateDone
@@ -62,9 +63,10 @@ type model struct {
 	yearCursor     int
 	scopeCursor    int
 	scopes         []string
-	selectedScope  string
-	periodStart    time.Time
-	periodEnd      time.Time
+	selectedScope         string
+	showPersonnelDetails  bool
+	periodStart           time.Time
+	periodEnd             time.Time
 
 	nerisPages   int
 	nerisCount   int
@@ -80,6 +82,7 @@ type model struct {
 	stats       *ReportStats
 	periodLabel string
 	htmlPath    string
+	pdfPath     string
 }
 
 var (
@@ -114,9 +117,10 @@ func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) mo
 		now:            now,
 		state:          stateStart,
 		spinner:        s,
-		selectedYear:   now.Year(),
-		availableYears: years,
-		nameMap:        nameMap,
+		selectedYear:          now.Year(),
+		availableYears:        years,
+		nameMap:               nameMap,
+		showPersonnelDetails:  true,
 	}
 }
 
@@ -289,6 +293,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleYearKey(msg)
 		case stateSelectingScope:
 			return m.handleScopeKey(msg)
+		case stateSelectingOptions:
+			return m.handleOptionsKey(msg)
 		case stateDone, stateError:
 			if msg.String() == "enter" || msg.String() == "q" {
 				return m, tea.Quit
@@ -331,6 +337,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stats = msg.stats
 		m.periodLabel = msg.periodLabel
 		m.htmlPath = msg.htmlPath
+		m.pdfPath = msg.pdfPath
 		m.state = stateDone
 		return m, nil
 
@@ -363,7 +370,7 @@ func (m model) handleYearKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.yearCursor < len(m.availableYears)-1 { m.yearCursor++ }
 	case "enter":
 		m.selectedYear = m.availableYears[m.yearCursor]
-		m.scopes = []string{"Full Year", "Q1", "Q2", "Q3", "Q4"}
+		m.scopes = []string{"Full Year", "Fiscal Year", "Q1", "Q2", "Q3", "Q4"}
 		m.scopes = append(m.scopes, months...)
 		m.scopeCursor = 0
 		m.state = stateSelectingScope
@@ -380,6 +387,19 @@ func (m model) handleScopeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.selectedScope = m.scopes[m.scopeCursor]
 		m.periodStart, m.periodEnd = computePeriodRange(m.selectedYear, m.selectedScope)
+		m.state = stateSelectingOptions
+		var fetchCmd tea.Cmd
+		m.progressCh, fetchCmd = fetchAllIncidents(m.client, m.periodStart, m.periodEnd)
+		return m, tea.Batch(m.spinner.Tick, fetchCmd, listenProgress(m.progressCh))
+	}
+	return m, nil
+}
+
+func (m model) handleOptionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case " ":
+		m.showPersonnelDetails = !m.showPersonnelDetails
+	case "enter":
 		m.state = stateFetchingIncidents
 		var fetchCmd tea.Cmd
 		m.progressCh, fetchCmd = fetchAllIncidents(m.client, m.periodStart, m.periodEnd)
@@ -393,6 +413,9 @@ func computePeriodRange(year int, scope string) (time.Time, time.Time) {
 	case "Full Year":
 		return time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC),
 			time.Date(year, 12, 31, 23, 59, 59, 0, time.UTC)
+	case "Fiscal Year":
+		return time.Date(year-1, 5, 1, 0, 0, 0, 0, time.UTC),
+			time.Date(year, 4, 30, 23, 59, 59, 0, time.UTC)
 	case "Q1":
 		return time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC),
 			time.Date(year, 3, 31, 23, 59, 59, 0, time.UTC)
@@ -419,9 +442,11 @@ func computePeriodRange(year int, scope string) (time.Time, time.Time) {
 }
 
 type statsDoneMsg struct {
-	stats       *ReportStats
-	periodLabel string
-	htmlPath    string
+	stats                *ReportStats
+	periodLabel          string
+	htmlPath             string
+	pdfPath              string
+	showPersonnelDetails bool
 }
 type statsErrMsg struct{ err error }
 
@@ -444,11 +469,18 @@ func processStats(m model) tea.Cmd {
 		showCharts := m.periodEnd.Year() > m.periodStart.Year() ||
 			m.periodEnd.Month() > m.periodStart.Month()
 		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd, m.nameMap)
-		htmlPath, err := SaveHTML(stats, periodLabel, showCharts)
+		htmlPath, err := SaveHTML(stats, periodLabel, showCharts, m.showPersonnelDetails)
 		if err != nil {
 			return statsErrMsg{err}
 		}
-		return statsDoneMsg{stats: stats, periodLabel: periodLabel, htmlPath: htmlPath}
+		var pdfPath string
+		// PDF is always generated; personnel details toggle is respected in the PDF too
+		pdfPath, _ = SavePDF(stats, periodLabel, showCharts, m.showPersonnelDetails)
+		return statsDoneMsg{
+			stats: stats, periodLabel: periodLabel,
+			htmlPath: htmlPath, pdfPath: pdfPath,
+			showPersonnelDetails: m.showPersonnelDetails,
+		}
 	}
 }
 
@@ -471,6 +503,8 @@ func (m model) View() string {
 	case stateSelectingScope:
 		label := fmt.Sprintf("Department: %s — Year: %d — Select Scope", m.selectedDept, m.selectedYear)
 		return m.viewPicker(label, m.scopes, m.scopeCursor)
+	case stateSelectingOptions:
+		return m.viewOptions()
 	case stateFetchingIncidents:
 		return m.viewFetchProgress()
 	case stateProcessing:
@@ -543,6 +577,18 @@ func (m model) viewFetchProgress() string {
 	return b.String()
 }
 
+func (m model) viewOptions() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Report Options"))
+	b.WriteString("\n\n")
+	check := "[ ]"
+	if m.showPersonnelDetails { check = "[x]" }
+	b.WriteString(fmt.Sprintf("  %s Show personnel details (member lists)\n", check))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("  space toggle  ·  enter continue  ·  ctrl+c quit"))
+	return b.String()
+}
+
 func (m model) viewDone() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(fmt.Sprintf("Report: %s", m.stats.DeptName)))
@@ -559,7 +605,10 @@ func (m model) viewDone() string {
 		m.stats.PersonnelTotalResponding, m.stats.PersonnelHighCount, m.stats.PersonnelActiveCount, m.stats.PersonnelGoodStandingCount))
 	b.WriteString(fmt.Sprintf("  Special Units — Drone: %d  Rehab: %d\n",
 		m.stats.DroneTeamCount, m.stats.RehabTeamCount))
-	b.WriteString(fmt.Sprintf("\n  %s\n\n", successStyle.Render(fmt.Sprintf("HTML report saved: %s", m.htmlPath))))
+	if m.pdfPath != "" {
+		b.WriteString(fmt.Sprintf("\n  %s\n", successStyle.Render(fmt.Sprintf("PDF report saved:  %s", m.pdfPath))))
+	}
+	b.WriteString(fmt.Sprintf("  %s\n\n", successStyle.Render(fmt.Sprintf("HTML report saved: %s", m.htmlPath))))
 	b.WriteString(helpStyle.Render("  Press q to quit"))
 	return b.String()
 }
@@ -579,6 +628,9 @@ func periodString(start, end time.Time) string {
 	}
 	if month >= 10 && month <= 12 && start.Day() == 1 && end.Month() == 12 {
 		return fmt.Sprintf("Q4_%d", start.Year())
+	}
+	if start.Month() == 5 && start.Day() == 1 && end.Month() == 4 && end.Day() == 30 {
+		return fmt.Sprintf("FY_%d", end.Year())
 	}
 	if start.Month() == 1 && start.Day() == 1 && end.Month() == 12 {
 		return fmt.Sprintf("%d", start.Year())

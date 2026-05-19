@@ -1,5 +1,6 @@
 .env
 *.html
+*.pdf
 en-report
 en-report.exe
 .playwright-mcp/

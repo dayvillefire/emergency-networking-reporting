@@ -396,6 +396,13 @@ func computeSpecialUnits(s *ReportStats, incidents []NormalizedIncident) {
 
 // ---- Monthly ----
 
+func resolveName(raw string, nameMap map[string]string) string {
+	if name, ok := nameMap[raw]; ok {
+		return name
+	}
+	return raw
+}
+
 func computePersonnelResponse(s *ReportStats, incidents []NormalizedIncident, nameMap map[string]string) {
 	counts := make(map[string]*PersonnelRecord)
 	onScene := make(map[string]int)
@@ -403,11 +410,13 @@ func computePersonnelResponse(s *ReportStats, incidents []NormalizedIncident, na
 
 	for _, inc := range incidents {
 		seen := make(map[string]bool)
-		for _, name := range inc.OnScenePersonnel {
+		for _, raw := range inc.OnScenePersonnel {
+			name := resolveName(raw, nameMap)
 			seen[name] = true
 			onScene[name]++
 		}
-		for _, name := range inc.NotOnScenePersonnel {
+		for _, raw := range inc.NotOnScenePersonnel {
+			name := resolveName(raw, nameMap)
 			seen[name] = true
 			notOnScene[name]++
 		}
@@ -425,9 +434,6 @@ func computePersonnelResponse(s *ReportStats, incidents []NormalizedIncident, na
 		r.NotOnScene = notOnScene[name]
 		if s.TotalCalls > 0 {
 			r.Pct = float64(r.TotalCalls) / float64(s.TotalCalls) * 100
-		}
-		if displayName, ok := nameMap[name]; ok {
-			r.Name = displayName
 		}
 		list = append(list, *r)
 	}

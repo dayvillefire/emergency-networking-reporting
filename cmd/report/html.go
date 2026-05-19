@@ -209,28 +209,34 @@ mkBar('chart-special-units', [
   <p>{{.PersonnelTotalResponding}} total responding members</p>
 
   <h3 style="margin-top: 1rem;">High Responders (&ge;30%) — {{.PersonnelHighCount}} members</h3>
+  {{if .ShowPersonnelDetails}}
   <table>
     <tr><th>Name</th><th>Total Calls</th><th>%</th><th>On Scene</th><th>Not On Scene</th></tr>
     {{range .PersonnelHigh}}
     <tr><td>{{.Name}}</td><td>{{.TotalCalls}}</td><td>{{printf "%.1f" .Pct}}%</td><td>{{.OnScene}}</td><td>{{.NotOnScene}}</td></tr>
     {{end}}
   </table>
+  {{end}}
 
   <h3 style="margin-top: 1rem;">Active Members (&ge;20%) — {{.PersonnelActiveCount}} cumulative members</h3>
+  {{if .ShowPersonnelDetails}}
   <table>
     <tr><th>Name</th><th>Total Calls</th><th>%</th><th>On Scene</th><th>Not On Scene</th></tr>
     {{range .PersonnelActive}}
     <tr><td>{{.Name}}</td><td>{{.TotalCalls}}</td><td>{{printf "%.1f" .Pct}}%</td><td>{{.OnScene}}</td><td>{{.NotOnScene}}</td></tr>
     {{end}}
   </table>
+  {{end}}
 
   <h3 style="margin-top: 1rem;">Members in Good Standing (&ge;10%) — {{.PersonnelGoodStandingCount}} cumulative members</h3>
+  {{if .ShowPersonnelDetails}}
   <table>
     <tr><th>Name</th><th>Total Calls</th><th>%</th><th>On Scene</th><th>Not On Scene</th></tr>
     {{range .PersonnelGoodStanding}}
     <tr><td>{{.Name}}</td><td>{{.TotalCalls}}</td><td>{{printf "%.1f" .Pct}}%</td><td>{{.OnScene}}</td><td>{{.NotOnScene}}</td></tr>
     {{end}}
   </table>
+  {{end}}
 </section>
 
 
@@ -270,7 +276,7 @@ var funcMap = template.FuncMap{
 }
 
 // GenerateHTML renders the report as HTML and returns it as a string.
-func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool) (string, error) {
+func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool, showPersonnelDetails bool) (string, error) {
 	chartJSON := "[]"
 	if showCharts && len(s.Monthly) > 0 {
 		b, _ := json.Marshal(s.Monthly)
@@ -279,10 +285,11 @@ func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool) (string, 
 
 	data := struct {
 		*ReportStats
-		PeriodLabel string
-		ShowCharts  bool
-		ChartJSON   template.JS
-	}{s, periodLabel, showCharts, template.JS(chartJSON)}
+		PeriodLabel          string
+		ShowCharts           bool
+		ShowPersonnelDetails bool
+		ChartJSON            template.JS
+	}{s, periodLabel, showCharts, showPersonnelDetails, template.JS(chartJSON)}
 
 	tmpl, err := template.New("report").Funcs(funcMap).Parse(htmlTemplate)
 	if err != nil {
@@ -296,8 +303,8 @@ func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool) (string, 
 }
 
 // SaveHTML writes the HTML report to a file named <dept>_<period>.html.
-func SaveHTML(s *ReportStats, periodLabel string, showCharts bool) (string, error) {
-	html, err := GenerateHTML(s, periodLabel, showCharts)
+func SaveHTML(s *ReportStats, periodLabel string, showCharts bool, showPersonnelDetails bool) (string, error) {
+	html, err := GenerateHTML(s, periodLabel, showCharts, showPersonnelDetails)
 	if err != nil {
 		return "", err
 	}
