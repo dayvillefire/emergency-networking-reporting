@@ -62,6 +62,23 @@ func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 		n.UnitPersonnel = len(inc.Personnel)
 	}
 	n.PersonnelCount = len(inc.Personnel)
+
+	// Non-apparatus personnel
+	n.UnitPersonnel += len(inc.IncidentAdditionalResponders)
+	n.PersonnelCount += len(inc.IncidentAdditionalResponders)
+	for _, r := range inc.IncidentAdditionalResponders {
+		if r != "" {
+			n.NotOnScenePersonnel = append(n.NotOnScenePersonnel, r)
+		}
+	}
+	// Mutual aid personnel
+	for _, ma := range inc.MutualAid {
+		if maCount, err := strconv.Atoi(string(ma.MutualAidNumberOfPersonnel)); err == nil && maCount > 0 {
+			n.UnitPersonnel += maCount
+			n.PersonnelCount += maCount
+		}
+	}
+
 	for _, p := range inc.Personnel {
 		name := string(p.PersonnelName)
 		if name == "" {

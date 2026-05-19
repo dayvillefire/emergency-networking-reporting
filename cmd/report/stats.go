@@ -189,14 +189,18 @@ func computeEMSvsFire(s *ReportStats, incidents []NormalizedIncident) {
 	}
 }
 
+func incidentPersonnel(inc NormalizedIncident) int {
+	if inc.UnitPersonnel > 0 {
+		return inc.UnitPersonnel
+	}
+	return inc.PersonnelCount
+}
+
 func computeAvgPersonnel(s *ReportStats, incidents []NormalizedIncident) {
 	var totalPersonnel int
 	var callsWithPersonnel int
 	for _, inc := range incidents {
-		p := inc.UnitPersonnel
-		if p == 0 {
-			p = inc.PersonnelCount
-		}
+		p := incidentPersonnel(inc)
 		if p > 0 {
 			totalPersonnel += p
 			callsWithPersonnel++
@@ -205,7 +209,9 @@ func computeAvgPersonnel(s *ReportStats, incidents []NormalizedIncident) {
 	if callsWithPersonnel > 0 {
 		s.AvgPersonnel = float64(totalPersonnel) / float64(callsWithPersonnel)
 	}
+
 }
+
 
 func computeResponseTimes(s *ReportStats, incidents []NormalizedIncident) {
 	var dispatchToEnRoute, dispatchToArrival, timeOnScene []float64
@@ -482,8 +488,7 @@ func computeMonthly(s *ReportStats, incidents []NormalizedIncident) {
 		}
 		var tp, cwp int
 		for _, inc := range bucket {
-			p := inc.UnitPersonnel
-			if p == 0 { p = inc.PersonnelCount }
+			p := incidentPersonnel(inc)
 			if p > 0 { tp += p; cwp++ }
 		}
 		if cwp > 0 { ms.AvgPersonnel = float64(tp) / float64(cwp) }

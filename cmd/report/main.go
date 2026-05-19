@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,8 @@ import (
 )
 
 func main() {
+	flag.Parse()
+
 	token := readToken()
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "API_TOKEN not found in .env or environment")
