@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -32,11 +33,16 @@ type stationListMsg struct {
 	err      error
 }
 
-type fetchedPageMsg struct {
-	incidents []enapi.NerisIncident
-	page      int
-	done      bool
-	err       error
+type fetchProgressMsg struct {
+	nerisPages   int
+	nerisCount   int
+	nerisElapsed time.Duration
+	incPages     int
+	incCount     int
+	incElapsed   time.Duration
+	done         bool
+	incidents    []NormalizedIncident
+	err          error
 }
 
 type model struct {
@@ -47,12 +53,10 @@ type model struct {
 	spinner spinner.Model
 	err     error
 
-	// Station data (lightweight fetch)
-	stations       []string
-	cursor         int
-	selectedDept   string
+	stations     []string
+	cursor       int
+	selectedDept string
 
-	// Period selection
 	availableYears []int
 	selectedYear   int
 	yearCursor     int
@@ -62,12 +66,17 @@ type model struct {
 	periodStart    time.Time
 	periodEnd      time.Time
 
-	// Full incident fetch
-	allIncidents     []enapi.NerisIncident
-	filteredIncidents []enapi.NerisIncident
-	currentPage      int
+	nerisPages   int
+	nerisCount   int
+	nerisElapsed time.Duration
+	incPages     int
+	incCount     int
+	incElapsed   time.Duration
+	progressCh   chan fetchProgressMsg
+	nameMap      map[string]string
 
-	// Results
+	filteredIncidents []NormalizedIncident
+
 	stats       *ReportStats
 	periodLabel string
 	htmlPath    string
@@ -75,12 +84,11 @@ type model struct {
 
 var (
 	bannerStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#ffffff")).
-		Background(lipgloss.Color("#c41e3a")).
-		Padding(1, 4).
-		Align(lipgloss.Center)
-
+			Bold(true).
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(lipgloss.Color("#c41e3a")).
+			Padding(1, 4).
+			Align(lipgloss.Center)
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#c41e3a")).MarginBottom(1)
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#c41e3a")).Bold(true).PaddingLeft(2)
 	unselected    = lipgloss.NewStyle().PaddingLeft(2)
@@ -93,80 +101,167 @@ var months = []string{
 	"July", "August", "September", "October", "November", "December",
 }
 
-func newModel(client *enapi.Client, now time.Time) model {
+func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#c41e3a"))
-
-	// Available years: current year and previous 5 years
 	years := make([]int, 0)
 	for y := now.Year(); y >= now.Year()-5; y-- {
 		years = append(years, y)
 	}
-
 	return model{
-		client:        client,
-		now:           now,
-		state:         stateStart,
-		spinner:       s,
-		selectedYear:  now.Year(),
+		client:         client,
+		now:            now,
+		state:          stateStart,
+		spinner:        s,
+		selectedYear:   now.Year(),
 		availableYears: years,
+		nameMap:        nameMap,
 	}
 }
 
-// init creates the model and runs the station fetch immediately.
-func (m model) Init() tea.Cmd {
-	return fetchStations(m.client)
-}
+func (m model) Init() tea.Cmd { return fetchStations(m.client) }
 
 func fetchStations(client *enapi.Client) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-
-		// Lightweight fetch: one page to get station names
-		resp, err := client.ListNerisIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(1))
-		if err != nil {
-			return stationListMsg{err: err}
-		}
-
 		stationSet := make(map[string]bool)
-		for _, inc := range resp.Data {
-			st := string(inc.IncidentStation)
-			if st != "" {
-				stationSet[st] = true
+		resp, err := client.ListNerisIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(1))
+		if err == nil {
+			for _, inc := range resp.Data {
+				if st := string(inc.IncidentStation); st != "" {
+					stationSet[st] = true
+				}
 			}
+		}
+		resp2, err2 := client.ListIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(1))
+		if err2 == nil {
+			for _, inc := range resp2.Data {
+				if inc.Station != "" {
+					stationSet[inc.Station] = true
+				}
+			}
+		}
+		if len(stationSet) == 0 && err != nil && err2 != nil {
+			return stationListMsg{err: err}
 		}
 		var stations []string
 		for st := range stationSet {
 			stations = append(stations, st)
 		}
 		sort.Strings(stations)
-		// "All Departments" is always first
 		stations = append([]string{"All Departments"}, stations...)
 		return stationListMsg{stations: stations}
 	}
 }
 
-func fetchIncidentPage(client *enapi.Client, start, end time.Time, page int) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+func fetchAllIncidents(client *enapi.Client, start, end time.Time) (chan fetchProgressMsg, tea.Cmd) {
+	ch := make(chan fetchProgressMsg, 256)
+	cmd := func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
+		var mu sync.Mutex
+		var nerisIncidents, incIncidents []NormalizedIncident
+		var nerisErr, incErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-		resp, err := client.ListNerisIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(page))
-		if err != nil {
-			return fetchedPageMsg{err: err}
-		}
-		// Filter by period
-		var filtered []enapi.NerisIncident
-		for _, inc := range resp.Data {
-			t := inc.IncidentPsapTime.Time
-			if !t.IsZero() && (t.Equal(start) || t.After(start)) && t.Before(end.Add(24*time.Hour)) {
-				filtered = append(filtered, inc)
+		go func() {
+			defer wg.Done()
+			startT := time.Now()
+			for page := 1; ; page++ {
+				resp, err := client.ListNerisIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(page))
+				if err != nil {
+					nerisErr = err
+					return
+				}
+				for _, inc := range resp.Data {
+					t := inc.IncidentPsapTime.Time
+					if !t.IsZero() && (t.Equal(start) || t.After(start)) && t.Before(end.Add(24*time.Hour)) {
+						mu.Lock()
+						nerisIncidents = append(nerisIncidents, normalizeNerisIncident(inc))
+						mu.Unlock()
+					}
+				}
+				select {
+				case ch <- fetchProgressMsg{nerisPages: page, nerisCount: len(nerisIncidents), nerisElapsed: time.Since(startT)}:
+				default:
+				}
+				if len(resp.Data) < 100 || page*100 >= resp.Total {
+					break
+				}
 			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			startT := time.Now()
+			zeroStreak := 0
+			for page := 1; ; page++ {
+				resp, err := client.ListIncidents(ctx, enapi.VWithPerPage(100), enapi.VWithPage(page))
+				if err != nil {
+					incErr = err
+					return
+				}
+				var count int
+				for _, inc := range resp.Data {
+					if inc.IncidentType == "" {
+						continue
+					}
+					t := inc.Psap.Time
+					if !t.IsZero() && (t.Equal(start) || t.After(start)) && t.Before(end.Add(24*time.Hour)) {
+						mu.Lock()
+						incIncidents = append(incIncidents, normalizeIncident(inc))
+						count++
+						mu.Unlock()
+					}
+				}
+				select {
+				case ch <- fetchProgressMsg{incPages: page, incCount: len(incIncidents), incElapsed: time.Since(startT)}:
+				default:
+				}
+				if len(resp.Data) < 100 || page*100 >= resp.Total {
+					break
+				}
+				if count == 0 {
+					zeroStreak++
+					if zeroStreak >= 5 {
+						break
+					}
+				} else {
+					zeroStreak = 0
+				}
+			}
+		}()
+
+		wg.Wait()
+		close(ch)
+		if nerisErr != nil {
+			return fetchProgressMsg{done: true, err: nerisErr}
 		}
-		done := len(resp.Data) < 100 || page*100 >= resp.Total
-		return fetchedPageMsg{incidents: filtered, page: page, done: done}
+		if incErr != nil {
+			return fetchProgressMsg{done: true, err: incErr}
+		}
+		return fetchProgressMsg{
+			done:       true,
+			incidents:  append(nerisIncidents, incIncidents...),
+			nerisCount: len(nerisIncidents),
+			incCount:   len(incIncidents),
+		}
+	}
+	return ch, cmd
+}
+
+type progressTickMsg struct{}
+
+func listenProgress(ch chan fetchProgressMsg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return progressTickMsg{}
+		}
+		return msg
 	}
 }
 
@@ -184,7 +279,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.state == stateStart {
-			// Any key dismisses the banner
 			m.state = stateFetchingStations
 			return m, m.spinner.Tick
 		}
@@ -211,20 +305,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateSelectingDept
 		return m, nil
 
-	case fetchedPageMsg:
+	case progressTickMsg:
+		return m, nil
+
+	case fetchProgressMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			m.state = stateError
 			return m, nil
 		}
-		m.allIncidents = append(m.allIncidents, msg.incidents...)
-		if !msg.done {
-			return m, fetchIncidentPage(m.client, m.periodStart, m.periodEnd, msg.page+1)
+		if msg.done {
+			m.filteredIncidents = msg.incidents
+			m.state = stateProcessing
+			return m, processStats(m)
 		}
-		// Done fetching — filter and proceed
-		m.filteredIncidents = m.allIncidents
-		m.state = stateProcessing
-		return m, processStats(m)
+		m.nerisPages = msg.nerisPages
+		m.nerisCount = msg.nerisCount
+		m.nerisElapsed = msg.nerisElapsed
+		m.incPages = msg.incPages
+		m.incCount = msg.incCount
+		m.incElapsed = msg.incElapsed
+		return m, listenProgress(m.progressCh)
 
 	case statsDoneMsg:
 		m.stats = msg.stats
@@ -241,8 +342,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ---- Key Handlers ----
-
 func (m model) handleDeptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
@@ -251,9 +350,6 @@ func (m model) handleDeptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(m.stations)-1 { m.cursor++ }
 	case "enter":
 		m.selectedDept = m.stations[m.cursor]
-		if m.selectedDept == "All Departments" {
-			// Will be resolved later from incident data
-		}
 		m.state = stateSelectingYear
 	}
 	return m, nil
@@ -285,9 +381,9 @@ func (m model) handleScopeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectedScope = m.scopes[m.scopeCursor]
 		m.periodStart, m.periodEnd = computePeriodRange(m.selectedYear, m.selectedScope)
 		m.state = stateFetchingIncidents
-		m.allIncidents = nil
-		cmds := []tea.Cmd{m.spinner.Tick, fetchIncidentPage(m.client, m.periodStart, m.periodEnd, 1)}
-		return m, tea.Batch(cmds...)
+		var fetchCmd tea.Cmd
+		m.progressCh, fetchCmd = fetchAllIncidents(m.client, m.periodStart, m.periodEnd)
+		return m, tea.Batch(m.spinner.Tick, fetchCmd, listenProgress(m.progressCh))
 	}
 	return m, nil
 }
@@ -318,12 +414,9 @@ func computePeriodRange(year int, scope string) (time.Time, time.Time) {
 			}
 		}
 	}
-	// Fallback: full year
 	return time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(year, 12, 31, 23, 59, 59, 0, time.UTC)
 }
-
-// ---- Stats processing ----
 
 type statsDoneMsg struct {
 	stats       *ReportStats
@@ -338,8 +431,7 @@ func processStats(m model) tea.Cmd {
 		if deptName == "All Departments" {
 			counts := make(map[string]int)
 			for _, inc := range m.filteredIncidents {
-				st := string(inc.IncidentStation)
-				if st != "" { counts[st]++ }
+				if inc.Station != "" { counts[inc.Station]++ }
 			}
 			maxCount := 0
 			majority := "Fire Department"
@@ -349,9 +441,9 @@ func processStats(m model) tea.Cmd {
 			deptName = majority
 		}
 		periodLabel := periodString(m.periodStart, m.periodEnd)
-			showCharts := m.periodEnd.Year() > m.periodStart.Year() ||
-				m.periodEnd.Month() > m.periodStart.Month()
-		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd)
+		showCharts := m.periodEnd.Year() > m.periodStart.Year() ||
+			m.periodEnd.Month() > m.periodStart.Month()
+		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd, m.nameMap)
 		htmlPath, err := SaveHTML(stats, periodLabel, showCharts)
 		if err != nil {
 			return statsErrMsg{err}
@@ -366,34 +458,25 @@ func (m model) View() string {
 	switch m.state {
 	case stateStart:
 		return m.viewBanner()
-
 	case stateFetchingStations:
 		return center(fmt.Sprintf("\n\n  %s Loading stations...\n\n", m.spinner.View()))
-
 	case stateSelectingDept:
 		return m.viewPicker("Select Department", m.stations, m.cursor)
-
 	case stateSelectingYear:
 		yearStrs := make([]string, len(m.availableYears))
 		for i, y := range m.availableYears {
 			yearStrs[i] = fmt.Sprintf("%d", y)
 		}
 		return m.viewPicker(fmt.Sprintf("Department: %s — Select Year", m.selectedDept), yearStrs, m.yearCursor)
-
 	case stateSelectingScope:
 		label := fmt.Sprintf("Department: %s — Year: %d — Select Scope", m.selectedDept, m.selectedYear)
 		return m.viewPicker(label, m.scopes, m.scopeCursor)
-
 	case stateFetchingIncidents:
-		return center(fmt.Sprintf("\n\n  %s Fetching incidents for %s...\n  %d loaded so far\n\n",
-			m.spinner.View(), periodString(m.periodStart, m.periodEnd), len(m.allIncidents)))
-
+		return m.viewFetchProgress()
 	case stateProcessing:
 		return center(fmt.Sprintf("\n\n  %s Computing statistics...\n\n", m.spinner.View()))
-
 	case stateError:
 		return center(fmt.Sprintf("\n  Error: %v\n\n  Press q to quit.\n", m.err))
-
 	case stateDone:
 		return m.viewDone()
 	}
@@ -419,12 +502,10 @@ func (m model) viewPicker(header string, items []string, cursor int) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(header))
 	b.WriteString("\n")
-
 	start := 0
 	if cursor > 5 { start = cursor - 5 }
 	end := start + 12
 	if end > len(items) { end = len(items) }
-
 	if start > 0 {
 		b.WriteString(fmt.Sprintf("  ↑ %d more...\n", start))
 	}
@@ -443,11 +524,29 @@ func (m model) viewPicker(header string, items []string, cursor int) string {
 	return b.String()
 }
 
+func (m model) viewFetchProgress() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(fmt.Sprintf("Fetching incidents: %s", periodString(m.periodStart, m.periodEnd))))
+	b.WriteString("\n\n")
+	if m.nerisPages > 0 {
+		b.WriteString(fmt.Sprintf("  %s NERIS:  page %d  |  %d matched  |  %s elapsed  |  batch: 100\n",
+			m.spinner.View(), m.nerisPages, m.nerisCount, m.nerisElapsed.Round(time.Second)))
+	}
+	if m.incPages > 0 {
+		b.WriteString(fmt.Sprintf("  %s NFIRS:  page %d  |  %d matched  |  %s elapsed  |  batch: 100\n",
+			m.spinner.View(), m.incPages, m.incCount, m.incElapsed.Round(time.Second)))
+	}
+	if m.nerisPages == 0 && m.incPages == 0 {
+		b.WriteString(fmt.Sprintf("  %s Starting...\n", m.spinner.View()))
+	}
+	b.WriteString(helpStyle.Render("\n  Fetching data from both NERIS and NFIRS sources..."))
+	return b.String()
+}
+
 func (m model) viewDone() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(fmt.Sprintf("Report: %s", m.stats.DeptName)))
 	b.WriteString(fmt.Sprintf("  Period: %s  ·  Total Calls: %d\n\n", m.periodLabel, m.stats.TotalCalls))
-
 	b.WriteString(fmt.Sprintf("  EMS:  %d (%.1f%%)", m.stats.EMSCount, m.stats.EMSPct))
 	b.WriteString(fmt.Sprintf("    Fire: %d (%.1f%%)\n", m.stats.FireCount, m.stats.FirePct))
 	b.WriteString(fmt.Sprintf("  Avg Personnel: %.1f    Concurrent: %d (%.1f%%)\n",
@@ -456,17 +555,16 @@ func (m model) viewDone() string {
 		m.stats.MutualAidGiven, m.stats.MutualAidGivenPct, m.stats.MutualAidReceived, m.stats.MutualAidReceivedPct))
 	b.WriteString(fmt.Sprintf("  Special — Hazmat: %d  MVA: %d  CO: %d\n",
 		m.stats.HazmatCount, m.stats.MVACount, m.stats.COCount))
+	b.WriteString(fmt.Sprintf("  Personnel — %d total, High: %d, Active: %d, Good Standing: %d\n",
+		m.stats.PersonnelTotalResponding, m.stats.PersonnelHighCount, m.stats.PersonnelActiveCount, m.stats.PersonnelGoodStandingCount))
 	b.WriteString(fmt.Sprintf("  Special Units — Drone: %d  Rehab: %d\n",
 		m.stats.DroneTeamCount, m.stats.RehabTeamCount))
-
 	b.WriteString(fmt.Sprintf("\n  %s\n\n", successStyle.Render(fmt.Sprintf("HTML report saved: %s", m.htmlPath))))
 	b.WriteString(helpStyle.Render("  Press q to quit"))
 	return b.String()
 }
 
-func center(s string) string {
-	return "\n" + s
-}
+func center(s string) string { return "\n" + s }
 
 func periodString(start, end time.Time) string {
 	month := start.Month()

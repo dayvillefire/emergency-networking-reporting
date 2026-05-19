@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,12 +24,34 @@ func main() {
 		enapi.WithHTTPClient(&http.Client{Timeout: 60 * time.Second}),
 	)
 
+	// Build name mapping from user data (ID/personnel_id → "Last, First")
+	nameMap := buildNameMap(client)
+
 	now := time.Now()
-	p := tea.NewProgram(newModel(client, now), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(client, now, nameMap), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func buildNameMap(client *enapi.Client) map[string]string {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	users, err := client.ListUsers(ctx)
+	if err != nil {
+		return nil
+	}
+	m := make(map[string]string, len(users))
+	for _, u := range users {
+		name := fmt.Sprintf("%s, %s", u.LastName, u.FirstName)
+		// Map by both database ID and personnel ID
+		if u.PersonnelID != "" {
+			m[u.PersonnelID] = name
+		}
+		m[fmt.Sprintf("%d", u.ID)] = name
+	}
+	return m
 }
 
 func readToken() string {
