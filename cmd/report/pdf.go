@@ -24,13 +24,13 @@ type pdfLineDataset struct {
 const (
 	chartLeftFull   = 30.0
 	chartRightFull  = 170.0
-	chartHeightFull = 55.0
+	chartHeightFull = 38.0
 	chartWidthFull  = chartRightFull - chartLeftFull // 140
 
 	chartLeftHalfL  = 28.0
 	chartWidthHalf  = 75.0
 	chartLeftHalfR  = 113.0
-	chartHeightHalf = 45.0
+	chartHeightHalf = 32.0
 )
 
 func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetails bool) (string, error) {
@@ -44,26 +44,26 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 
 	// Red header bar
 	pdf.SetFillColor(196, 30, 58)
-	pdf.Rect(0, 0, pageW, 28, "F")
+	pdf.Rect(0, 0, pageW, 18, "F")
 	pdf.SetTextColor(255, 255, 255)
-	pdf.SetFont("Helvetica", "B", 18)
-	pdf.SetY(8)
-	pdf.CellFormat(0, 12, safe(s.DeptName), "", 1, "C", false, 0, "")
-	pdf.SetFont("Helvetica", "", 10)
-	pdf.CellFormat(0, 6, safe(fmt.Sprintf("%s  -  Generated %s", periodLabel, s.GeneratedAt.Format("January 2, 2006"))), "", 1, "C", false, 0, "")
+	pdf.SetFont("Helvetica", "B", 14)
+	pdf.SetY(4)
+	pdf.CellFormat(0, 9, safe(s.DeptName), "", 1, "C", false, 0, "")
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.CellFormat(0, 5, safe(fmt.Sprintf("%s  -  Generated %s", periodLabel, s.GeneratedAt.Format("January 2, 2006"))), "", 1, "C", false, 0, "")
 
 	pdf.SetTextColor(26, 26, 46)
-	pdf.SetY(35)
+	pdf.SetY(24)
 
 	// Summary cards
 	cardW := (pageW - 45) / 4
-	cardH := 22.0
+	cardH := 16.0
 	cardY := pdf.GetY()
 	drawSummaryCard(pdf, 15, cardY, cardW, cardH, "Total Calls", fmt.Sprintf("%d", s.TotalCalls))
 	drawSummaryCard(pdf, 15+cardW+5, cardY, cardW, cardH, "EMS Calls", fmt.Sprintf("%d (%.1f%%)", s.EMSCount, s.EMSPct))
 	drawSummaryCard(pdf, 15+(cardW+5)*2, cardY, cardW, cardH, "Fire Calls", fmt.Sprintf("%d (%.1f%%)", s.FireCount, s.FirePct))
 	drawSummaryCard(pdf, 15+(cardW+5)*3, cardY, cardW, cardH, "Avg Personnel", fmt.Sprintf("%.1f", s.AvgPersonnel))
-	pdf.SetY(cardY + cardH + 10)
+	pdf.SetY(cardY + cardH + 6)
 
 	// ---- Charts (multi-month only) ----
 	if showCharts && len(s.Monthly) > 0 {
@@ -83,7 +83,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 		for i, m := range s.Monthly {
 			avgPersData[i] = m.AvgPersonnel
 		}
-		drawSideBySide(pdf, 80,
+		drawSideBySide(pdf, 60,
 			func() {
 				drawPDFBarChart(pdf, "Call Volume", months, []pdfBarDataset{
 					{Label: "EMS", Data: emsData, Color: [3]int{37, 99, 235}},
@@ -106,7 +106,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 			arrivalData[i] = m.DispatchToArrival
 			sceneData[i] = m.TimeOnScene
 		}
-		ensureSpace(pdf, 84)
+		ensureSpace(pdf, 60)
 		drawPDFLineChart(pdf, "Response Times (seconds)", months, []pdfLineDataset{
 			{Label: "Disp→EnRoute", Data: enRouteData, Color: [3]int{34, 197, 94}},
 			{Label: "Disp→Arrival", Data: arrivalData, Color: [3]int{245, 158, 11}},
@@ -124,7 +124,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 			givenData[i] = float64(m.MutualAidGiven)
 			receivedData[i] = float64(m.MutualAidReceived)
 		}
-		drawSideBySide(pdf, 80,
+		drawSideBySide(pdf, 60,
 			func() {
 				drawPDFLineChart(pdf, "Concurrent Calls", months, []pdfLineDataset{
 					{Label: "Concurrent Calls", Data: concurData, Color: [3]int{239, 68, 68}},
@@ -153,7 +153,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 			droneData[i] = float64(m.DroneTeam)
 			rehabData[i] = float64(m.RehabTeam)
 		}
-		drawSideBySide(pdf, 85,
+		drawSideBySide(pdf, 65,
 			func() {
 				drawPDFBarChart(pdf, "Special Incident Types", months, []pdfBarDataset{
 					{Label: "Hazmat", Data: hazmatData, Color: [3]int{239, 68, 68}},
@@ -172,7 +172,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 
 	// ---- Response Times ----
 	sectionHeader(pdf, "Response Times")
-	pdf.SetFont("Helvetica", "", 10)
+	pdf.SetFont("Helvetica", "", 8)
 	addTableRow(pdf, []string{"Metric", "Average (trimmed)"}, true)
 	addTableRow(pdf, []string{"Dispatch to En Route", formatDurationStr(s.DispatchToEnRouteAvg)}, false)
 	addTableRow(pdf, []string{"Dispatch to Arrival", formatDurationStr(s.DispatchToArrivalAvg)}, false)
@@ -180,8 +180,8 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 
 	// ---- Concurrent ----
 	sectionHeader(pdf, "Concurrent Calls")
-	pdf.SetFont("Helvetica", "", 10)
-	pdf.CellFormat(0, 6, safe(fmt.Sprintf("%d of %d calls overlapped (%.1f%%)", s.ConcurrentCount, s.TotalCalls, s.ConcurrentPct)), "", 1, "L", false, 0, "")
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.CellFormat(0, 5, safe(fmt.Sprintf("%d of %d calls overlapped (%.1f%%)", s.ConcurrentCount, s.TotalCalls, s.ConcurrentPct)), "", 1, "L", false, 0, "")
 
 	// ---- Mutual Aid ----
 	sectionHeader(pdf, "Mutual Aid")
@@ -190,12 +190,12 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 	addTableRow(pdf, []string{"Received", fmt.Sprintf("%d", s.MutualAidReceived), fmt.Sprintf("%.1f%%", s.MutualAidReceivedPct)}, false)
 
 	if len(s.MutualAidGivenDistricts) > 0 {
-		ensureSpace(pdf, 40)
-		pdf.SetFont("Helvetica", "B", 10)
+		ensureSpace(pdf, 30)
+		pdf.SetFont("Helvetica", "B", 8)
 		pdf.SetTextColor(196, 30, 58)
-		pdf.CellFormat(0, 6, "Given -- by District", "", 1, "L", false, 0, "")
+		pdf.CellFormat(0, 5, "Given -- by District", "", 1, "L", false, 0, "")
 		pdf.SetTextColor(26, 26, 46)
-		pdf.SetFont("Helvetica", "", 10)
+		pdf.SetFont("Helvetica", "", 8)
 		addTableRow(pdf, []string{"District", "Count"}, true)
 		for d, c := range s.MutualAidGivenDistricts {
 			addTableRow(pdf, []string{safe(d), fmt.Sprintf("%d", c)}, false)
@@ -204,7 +204,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 
 	// ---- EMS Mutual Aid ----
 	sectionHeader(pdf, "EMS Mutual Aid by District")
-	pdf.CellFormat(0, 6, safe(fmt.Sprintf("Total: %d", s.EMSMutualAidTotal)), "", 1, "L", false, 0, "")
+	pdf.CellFormat(0, 5, safe(fmt.Sprintf("Total: %d", s.EMSMutualAidTotal)), "", 1, "L", false, 0, "")
 	if len(s.EMSMutualAidDistricts) > 0 {
 		addTableRow(pdf, []string{"District", "Count"}, true)
 		for d, c := range s.EMSMutualAidDistricts {
@@ -237,18 +237,18 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 	addTableRow(pdf, []string{"Rehab Team (S263)", fmt.Sprintf("%d", s.RehabTeamCount), fmt.Sprintf("%.1f%%", s.RehabTeamPct)}, false)
 
 	// ---- Personnel Response ----
-	ensureSpace(pdf, 50)
-	pdf.SetFont("Helvetica", "B", 13)
+	ensureSpace(pdf, 35)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
-	pdf.CellFormat(0, 8, "Personnel Response", "", 1, "L", false, 0, "")
+	pdf.CellFormat(0, 6, "Personnel Response", "", 1, "L", false, 0, "")
 	pdf.SetDrawColor(200, 200, 200)
 	pageW, _ = pdf.GetPageSize()
 	pdf.Line(15, pdf.GetY(), pageW-15, pdf.GetY())
-	pdf.Ln(3)
-	pdf.SetFont("Helvetica", "", 10)
-	pdf.SetTextColor(26, 26, 46)
-	pdf.CellFormat(0, 6, safe(fmt.Sprintf("%d total responding members", s.PersonnelTotalResponding)), "", 1, "L", false, 0, "")
 	pdf.Ln(2)
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetTextColor(26, 26, 46)
+	pdf.CellFormat(0, 5, safe(fmt.Sprintf("%d total responding members", s.PersonnelTotalResponding)), "", 1, "L", false, 0, "")
+	pdf.Ln(1)
 
 	addPersonnelSection(pdf, safe(fmt.Sprintf("High Responders (>=30%%) -- %d members", s.PersonnelHighCount)), s.PersonnelHigh, showPersonnelDetails)
 	addPersonnelSection(pdf, safe(fmt.Sprintf("Active Members (>=20%%) -- %d cumulative", s.PersonnelActiveCount)), s.PersonnelActive, showPersonnelDetails)
@@ -273,15 +273,15 @@ func drawSummaryCard(pdf *gofpdf.Fpdf, x, y, w, h float64, label, value string) 
 	pdf.SetDrawColor(238, 238, 238)
 	pdf.RoundedRect(x, y, w, h, 3, "1234", "DF")
 	// Label
-	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetFont("Helvetica", "", 6)
 	pdf.SetTextColor(102, 102, 102)
 	pdf.SetXY(x+3, y+2)
-	pdf.CellFormat(w-6, 5, safe(label), "", 0, "L", false, 0, "")
+	pdf.CellFormat(w-6, 4, safe(label), "", 0, "L", false, 0, "")
 	// Value
-	pdf.SetFont("Helvetica", "B", 14)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
-	pdf.SetXY(x+3, y+7)
-	pdf.CellFormat(w-6, 10, safe(value), "", 0, "L", false, 0, "")
+	pdf.SetXY(x+3, y+6)
+	pdf.CellFormat(w-6, 8, safe(value), "", 0, "L", false, 0, "")
 	pdf.SetTextColor(26, 26, 46)
 }
 
@@ -304,15 +304,15 @@ func ensureSpace(pdf *gofpdf.Fpdf, neededMM float64) {
 }
 
 func sectionHeader(pdf *gofpdf.Fpdf, title string) {
-	ensureSpace(pdf, 30)
-	pdf.Ln(4)
-	pdf.SetFont("Helvetica", "B", 13)
+	ensureSpace(pdf, 20)
+	pdf.Ln(2)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
-	pdf.CellFormat(0, 8, safe(title), "", 1, "L", false, 0, "")
+	pdf.CellFormat(0, 6, safe(title), "", 1, "L", false, 0, "")
 	pdf.SetDrawColor(238, 238, 238)
 	pageW, _ := pdf.GetPageSize()
 	pdf.Line(15, pdf.GetY(), pageW-15, pdf.GetY())
-	pdf.Ln(3)
+	pdf.Ln(2)
 	pdf.SetTextColor(26, 26, 46)
 }
 
@@ -341,11 +341,11 @@ func addTableRow(pdf *gofpdf.Fpdf, cells []string, header bool) {
 		widths = []float64{80, 50, 50}
 	}
 	if header {
-		pdf.SetFont("Helvetica", "B", 10)
+		pdf.SetFont("Helvetica", "B", 9)
 		pdf.SetTextColor(102, 102, 102)
 		pdf.SetFillColor(248, 249, 250)
 	} else {
-		pdf.SetFont("Helvetica", "", 10)
+		pdf.SetFont("Helvetica", "", 8)
 		pdf.SetTextColor(26, 26, 46)
 		pdf.SetFillColor(255, 255, 255)
 	}
@@ -354,24 +354,24 @@ func addTableRow(pdf *gofpdf.Fpdf, cells []string, header bool) {
 		if i < len(widths) {
 			w = widths[i]
 		}
-		pdf.CellFormat(w, 6, safe(cell), "1", 0, "L", true, 0, "")
+		pdf.CellFormat(w, 5, safe(cell), "1", 0, "L", true, 0, "")
 	}
 	pdf.Ln(-1)
 	pdf.SetTextColor(26, 26, 46)
 }
 
 func addPersonnelSection(pdf *gofpdf.Fpdf, title string, records []PersonnelRecord, showDetails bool) {
-	ensureSpace(pdf, 35)
-	pdf.SetFont("Helvetica", "B", 10)
+	ensureSpace(pdf, 25)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
-	pdf.CellFormat(0, 7, safe(title), "", 1, "L", false, 0, "")
+	pdf.CellFormat(0, 5, safe(title), "", 1, "L", false, 0, "")
 	pdf.SetTextColor(26, 26, 46)
 	if showDetails && len(records) > 0 {
-		pdf.SetFont("Helvetica", "", 9)
+		pdf.SetFont("Helvetica", "", 7)
 		addTableRow(pdf, []string{"Name", "Calls", "%", "On Scene", "Not On Scene"}, true)
 		for i, r := range records {
 			if i > 0 && i%30 == 0 {
-				ensureSpace(pdf, 40)
+				ensureSpace(pdf, 30)
 			}
 			addTableRow(pdf, []string{
 				safe(r.Name), fmt.Sprintf("%d", r.TotalCalls),
@@ -381,7 +381,7 @@ func addPersonnelSection(pdf *gofpdf.Fpdf, title string, records []PersonnelReco
 			}, false)
 		}
 	}
-	pdf.Ln(3)
+	pdf.Ln(2)
 }
 
 func formatDurationStr(seconds float64) string {
@@ -416,7 +416,7 @@ func drawPDFBarChart(pdf *gofpdf.Fpdf, title string, months []string, datasets [
 	pdf.Ln(4)
 	chartRight := xLeft + chartWidth
 	chartLeft := xLeft
-	pdf.SetFont("Helvetica", "B", 11)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
 	if compact {
 		pdf.SetXY(xLeft+2, pdf.GetY())
@@ -562,7 +562,7 @@ func drawPDFLineChart(pdf *gofpdf.Fpdf, title string, months []string, datasets 
 	pdf.Ln(4)
 	chartRight := xLeft + chartWidth
 	chartLeft := xLeft
-	pdf.SetFont("Helvetica", "B", 11)
+	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)
 	if compact {
 		pdf.SetXY(xLeft+2, pdf.GetY())

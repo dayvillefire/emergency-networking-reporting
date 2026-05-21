@@ -65,6 +65,8 @@ type model struct {
 	scopes         []string
 	selectedScope         string
 	showPersonnelDetails  bool
+	showCharts            bool
+	optionsCursor         int
 	periodStart           time.Time
 	periodEnd             time.Time
 
@@ -121,6 +123,8 @@ func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) mo
 		availableYears:        years,
 		nameMap:               nameMap,
 		showPersonnelDetails:  true,
+		showCharts:            true,
+		optionsCursor:         0,
 	}
 }
 
@@ -397,8 +401,21 @@ func (m model) handleScopeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleOptionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "up", "k":
+		if m.optionsCursor > 0 {
+			m.optionsCursor--
+		}
+	case "down", "j":
+		if m.optionsCursor < 1 {
+			m.optionsCursor++
+		}
 	case " ":
-		m.showPersonnelDetails = !m.showPersonnelDetails
+		switch m.optionsCursor {
+		case 0:
+			m.showPersonnelDetails = !m.showPersonnelDetails
+		case 1:
+			m.showCharts = !m.showCharts
+		}
 	case "enter":
 		m.state = stateFetchingIncidents
 		var fetchCmd tea.Cmd
@@ -466,8 +483,7 @@ func processStats(m model) tea.Cmd {
 			deptName = majority
 		}
 		periodLabel := periodString(m.periodStart, m.periodEnd)
-		showCharts := m.periodEnd.Year() > m.periodStart.Year() ||
-			m.periodEnd.Month() > m.periodStart.Month()
+		showCharts := m.showCharts
 		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd, m.nameMap)
 		htmlPath, err := SaveHTML(stats, periodLabel, showCharts, m.showPersonnelDetails)
 		if err != nil {
@@ -581,11 +597,32 @@ func (m model) viewOptions() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Report Options"))
 	b.WriteString("\n\n")
-	check := "[ ]"
-	if m.showPersonnelDetails { check = "[x]" }
-	b.WriteString(fmt.Sprintf("  %s Show personnel details (member lists)\n", check))
+
+	type optDef struct {
+		label string
+		value bool
+	}
+	opts := []optDef{
+		{"Show personnel details (member lists)", m.showPersonnelDetails},
+		{"Show charts/graphs (monthly trends)", m.showCharts},
+	}
+
+	for i, opt := range opts {
+		check := "[ ]"
+		if opt.value {
+			check = "[x]"
+		}
+		line := fmt.Sprintf("%s %s", check, opt.label)
+		if i == m.optionsCursor {
+			b.WriteString(selectedStyle.Render(fmt.Sprintf("> %s", line)))
+		} else {
+			b.WriteString(unselected.Render(fmt.Sprintf("  %s", line)))
+		}
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("  space toggle  ·  enter continue  ·  ctrl+c quit"))
+	b.WriteString(helpStyle.Render("  ↑↓ navigate  ·  space toggle  ·  enter continue  ·  ctrl+c quit"))
 	return b.String()
 }
 
