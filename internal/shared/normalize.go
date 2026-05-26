@@ -1,37 +1,14 @@
-package main
+package shared
 
 import (
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dayvillefire/emergency-networking-reporting/enapi"
 )
 
-// NormalizedIncident is a unified incident type that both NerisIncident
-// and legacy Incident (NFIRS-format) can be converted into.
-type NormalizedIncident struct {
-	PSAPTime           time.Time
-	DispatchTime       time.Time
-	EnrouteTime        time.Time
-	ArrivalTime        time.Time
-	ClearTime          time.Time
-	Shift              string
-	Station            string
-	District           string
-	DispatchedAs        string
-	PrimaryIncidentType string
-	IncidentTypes       []string
-	MutualAidGiven      bool
-	MutualAidReceived   bool
-	UnitPersonnel       int
-	UnitNames           []string
-	PersonnelCount      int
-	OnScenePersonnel    []string
-	NotOnScenePersonnel []string
-}
-
-func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
+// NormNerisIncident converts a NERIS incident to the normalized type.
+func NormNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 	n := NormalizedIncident{
 		PSAPTime:           inc.IncidentPsapTime.Time,
 		DispatchTime:       inc.IncidentDispatchTime.Time,
@@ -41,9 +18,9 @@ func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 		Shift:              string(inc.IncidentShift),
 		Station:            string(inc.IncidentStation),
 		District:           string(inc.IncidentDistrict),
-		DispatchedAs:        string(inc.IncidentDispatchedAs),
+		DispatchedAs:       string(inc.IncidentDispatchedAs),
 		PrimaryIncidentType: string(inc.PrimaryIncidentType),
-		IncidentTypes:       inc.IncidentType,
+		IncidentTypes:      inc.IncidentType,
 	}
 
 	mg := strings.ToLower(string(inc.MutualAidGivenOrReceived))
@@ -63,7 +40,6 @@ func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 	}
 	n.PersonnelCount = len(inc.Personnel)
 
-	// Non-apparatus personnel
 	n.UnitPersonnel += len(inc.IncidentAdditionalResponders)
 	n.PersonnelCount += len(inc.IncidentAdditionalResponders)
 	for _, r := range inc.IncidentAdditionalResponders {
@@ -71,7 +47,6 @@ func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 			n.NotOnScenePersonnel = append(n.NotOnScenePersonnel, r)
 		}
 	}
-	// Mutual aid personnel
 	for _, ma := range inc.MutualAid {
 		if maCount, err := strconv.Atoi(string(ma.MutualAidNumberOfPersonnel)); err == nil && maCount > 0 {
 			n.UnitPersonnel += maCount
@@ -93,7 +68,8 @@ func normalizeNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 	return n
 }
 
-func normalizeIncident(inc enapi.Incident) NormalizedIncident {
+// NormIncident converts a legacy NFIRS incident to the normalized type.
+func NormIncident(inc enapi.Incident) NormalizedIncident {
 	n := NormalizedIncident{
 		PSAPTime:           inc.Psap.Time,
 		EnrouteTime:        inc.Enroute.Time,
@@ -102,12 +78,11 @@ func normalizeIncident(inc enapi.Incident) NormalizedIncident {
 		Shift:              inc.Shift,
 		Station:            inc.Station,
 		District:           inc.District,
-		DispatchedAs:        inc.DispatchedAs,
+		DispatchedAs:       inc.DispatchedAs,
 		PrimaryIncidentType: inc.IncidentType,
-		IncidentTypes:       []string{inc.IncidentType},
+		IncidentTypes:      []string{inc.IncidentType},
 	}
 
-	// Dispatch time from first unit that has one
 	for _, u := range inc.Units {
 		if !u.Dispatch.Time.IsZero() {
 			n.DispatchTime = u.Dispatch.Time
@@ -130,7 +105,6 @@ func normalizeIncident(inc enapi.Incident) NormalizedIncident {
 		}
 	}
 
-	// Non-apparatus personnel
 	n.UnitPersonnel += len(inc.AdditionalResponders)
 	n.PersonnelCount += len(inc.AdditionalResponders)
 	for _, r := range inc.AdditionalResponders {
@@ -146,18 +120,20 @@ func normalizeIncident(inc enapi.Incident) NormalizedIncident {
 	return n
 }
 
-func normalizeNerisSlice(incidents []enapi.NerisIncident) []NormalizedIncident {
+// NormNerisSlice normalizes a slice of NERIS incidents.
+func NormNerisSlice(incidents []enapi.NerisIncident) []NormalizedIncident {
 	out := make([]NormalizedIncident, len(incidents))
 	for i, inc := range incidents {
-		out[i] = normalizeNerisIncident(inc)
+		out[i] = NormNerisIncident(inc)
 	}
 	return out
 }
 
-func normalizeIncidentSlice(incidents []enapi.Incident) []NormalizedIncident {
+// NormIncidentSlice normalizes a slice of legacy incidents.
+func NormIncidentSlice(incidents []enapi.Incident) []NormalizedIncident {
 	out := make([]NormalizedIncident, len(incidents))
 	for i, inc := range incidents {
-		out[i] = normalizeIncident(inc)
+		out[i] = NormIncident(inc)
 	}
 	return out
 }

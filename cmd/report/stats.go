@@ -4,17 +4,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dayvillefire/emergency-networking-reporting/internal/shared"
 )
-
-// PersonnelRecord holds participation stats for one person.
-type PersonnelRecord struct {
-	Name        string
-	TotalCalls  int
-	Pct         float64
-	OnScene     int
-	NotOnScene  int
-}
-
 
 // MonthlyStats holds per-month breakdowns for charting.
 type MonthlyStats struct {
@@ -89,20 +81,20 @@ type ReportStats struct {
 	RehabTeamCount int
 	RehabTeamPct   float64
 
-	PersonnelHigh             []PersonnelRecord
-	PersonnelHighCount        int
-	PersonnelActive           []PersonnelRecord
-	PersonnelActiveCount      int
-	PersonnelGoodStanding     []PersonnelRecord
+	PersonnelHigh              []shared.PersonnelRecord
+	PersonnelHighCount         int
+	PersonnelActive            []shared.PersonnelRecord
+	PersonnelActiveCount       int
+	PersonnelGoodStanding      []shared.PersonnelRecord
 	PersonnelGoodStandingCount int
-	PersonnelTotalResponding  int
+	PersonnelTotalResponding   int
 
 	// Monthly breakdowns for charting (quarter/year reports)
 	Monthly []MonthlyStats
 }
 
 // ComputeStats runs all report calculations on the filtered incidents.
-func ComputeStats(incidents []NormalizedIncident, deptName string, start, end time.Time, nameMap map[string]string) *ReportStats {
+func ComputeStats(incidents []shared.NormalizedIncident, deptName string, start, end time.Time, nameMap map[string]string) *ReportStats {
 	s := &ReportStats{
 		PeriodStart:             start,
 		PeriodEnd:               end,
@@ -126,13 +118,20 @@ func ComputeStats(incidents []NormalizedIncident, deptName string, start, end ti
 	computeByShift(s, incidents)
 	computeSpecialTypes(s, incidents)
 	computeSpecialUnits(s, incidents)
-	computePersonnelResponse(s, incidents, nameMap)
+	pr := shared.ComputePersonnelResponse(incidents, nameMap)
+	s.PersonnelHigh = pr.High
+	s.PersonnelActive = pr.Active
+	s.PersonnelGoodStanding = pr.GoodStanding
+	s.PersonnelHighCount = len(pr.High)
+	s.PersonnelActiveCount = len(pr.High) + len(pr.Active)
+	s.PersonnelGoodStandingCount = len(pr.High) + len(pr.Active) + len(pr.GoodStanding)
+	s.PersonnelTotalResponding = len(pr.High) + len(pr.Active) + len(pr.GoodStanding)
 	computeMonthly(s, incidents)
 
 	return s
 }
 
-func isEMS(inc NormalizedIncident) bool {
+func isEMS(inc shared.NormalizedIncident) bool {
 	disp := inc.DispatchedAs
 	dispLower := strings.ToLower(disp)
 	if strings.HasPrefix(disp, "[M]") || strings.Contains(dispLower, "medical") {
@@ -175,7 +174,7 @@ func isEMS(inc NormalizedIncident) bool {
 	return false
 }
 
-func computeEMSvsFire(s *ReportStats, incidents []NormalizedIncident) {
+func computeEMSvsFire(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		if isEMS(inc) {
 			s.EMSCount++
@@ -189,14 +188,14 @@ func computeEMSvsFire(s *ReportStats, incidents []NormalizedIncident) {
 	}
 }
 
-func incidentPersonnel(inc NormalizedIncident) int {
+func incidentPersonnel(inc shared.NormalizedIncident) int {
 	if inc.UnitPersonnel > 0 {
 		return inc.UnitPersonnel
 	}
 	return inc.PersonnelCount
 }
 
-func computeAvgPersonnel(s *ReportStats, incidents []NormalizedIncident) {
+func computeAvgPersonnel(s *ReportStats, incidents []shared.NormalizedIncident) {
 	var totalPersonnel int
 	var callsWithPersonnel int
 	for _, inc := range incidents {
@@ -213,7 +212,7 @@ func computeAvgPersonnel(s *ReportStats, incidents []NormalizedIncident) {
 }
 
 
-func computeResponseTimes(s *ReportStats, incidents []NormalizedIncident) {
+func computeResponseTimes(s *ReportStats, incidents []shared.NormalizedIncident) {
 	var dispatchToEnRoute, dispatchToArrival, timeOnScene []float64
 	zero := time.Time{}
 
@@ -264,14 +263,14 @@ func trimmedMean(durations []float64) float64 {
 	return sum / float64(len(trimmed))
 }
 
-func computeConcurrent(s *ReportStats, incidents []NormalizedIncident) {
+func computeConcurrent(s *ReportStats, incidents []shared.NormalizedIncident) {
 	s.ConcurrentCount = countConcurrent(incidents)
 	if s.TotalCalls > 0 {
 		s.ConcurrentPct = float64(s.ConcurrentCount) / float64(s.TotalCalls) * 100
 	}
 }
 
-func computeMutualAid(s *ReportStats, incidents []NormalizedIncident) {
+func computeMutualAid(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		district := inc.District
 		if district == "" {
@@ -291,7 +290,7 @@ func computeMutualAid(s *ReportStats, incidents []NormalizedIncident) {
 	}
 }
 
-func computeEMSMutualAidByDistrict(s *ReportStats, incidents []NormalizedIncident) {
+func computeEMSMutualAidByDistrict(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		if !isEMS(inc) {
 			continue
@@ -308,7 +307,7 @@ func computeEMSMutualAidByDistrict(s *ReportStats, incidents []NormalizedInciden
 	}
 }
 
-func computeByShift(s *ReportStats, incidents []NormalizedIncident) {
+func computeByShift(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		shift := inc.Shift
 		if shift == "" {
@@ -318,7 +317,7 @@ func computeByShift(s *ReportStats, incidents []NormalizedIncident) {
 	}
 }
 
-func isHazmat(inc NormalizedIncident) bool {
+func isHazmat(inc shared.NormalizedIncident) bool {
 	pt := strings.ToLower(inc.PrimaryIncidentType)
 	disp := strings.ToLower(inc.DispatchedAs)
 	allTypes := strings.ToLower(strings.Join(inc.IncidentTypes, " "))
@@ -334,7 +333,7 @@ func isHazmat(inc NormalizedIncident) bool {
 	return false
 }
 
-func isMVA(inc NormalizedIncident) bool {
+func isMVA(inc shared.NormalizedIncident) bool {
 	pt := strings.ToLower(inc.PrimaryIncidentType)
 	disp := strings.ToLower(inc.DispatchedAs)
 	allTypes := strings.ToLower(strings.Join(inc.IncidentTypes, " "))
@@ -349,7 +348,7 @@ func isMVA(inc NormalizedIncident) bool {
 	return false
 }
 
-func isCO(inc NormalizedIncident) bool {
+func isCO(inc shared.NormalizedIncident) bool {
 	pt := strings.ToLower(inc.PrimaryIncidentType)
 	disp := strings.ToLower(inc.DispatchedAs)
 	allTypes := strings.ToLower(strings.Join(inc.IncidentTypes, " "))
@@ -366,7 +365,7 @@ func isCO(inc NormalizedIncident) bool {
 }
 
 
-func computeSpecialTypes(s *ReportStats, incidents []NormalizedIncident) {
+func computeSpecialTypes(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		if isHazmat(inc) { s.HazmatCount++ }
 		if isMVA(inc) { s.MVACount++ }
@@ -379,7 +378,7 @@ func computeSpecialTypes(s *ReportStats, incidents []NormalizedIncident) {
 	}
 }
 
-func computeSpecialUnits(s *ReportStats, incidents []NormalizedIncident) {
+func computeSpecialUnits(s *ReportStats, incidents []shared.NormalizedIncident) {
 	for _, inc := range incidents {
 		for _, name := range inc.UnitNames {
 			if strings.Contains(strings.ToUpper(name), "UAV163") {
@@ -402,73 +401,15 @@ func computeSpecialUnits(s *ReportStats, incidents []NormalizedIncident) {
 
 // ---- Monthly ----
 
-func resolveName(raw string, nameMap map[string]string) string {
-	if name, ok := nameMap[raw]; ok {
-		return name
-	}
-	return raw
-}
 
-func computePersonnelResponse(s *ReportStats, incidents []NormalizedIncident, nameMap map[string]string) {
-	counts := make(map[string]*PersonnelRecord)
-	onScene := make(map[string]int)
-	notOnScene := make(map[string]int)
-
-	for _, inc := range incidents {
-		seen := make(map[string]bool)
-		for _, raw := range inc.OnScenePersonnel {
-			name := resolveName(raw, nameMap)
-			seen[name] = true
-			onScene[name]++
-		}
-		for _, raw := range inc.NotOnScenePersonnel {
-			name := resolveName(raw, nameMap)
-			seen[name] = true
-			notOnScene[name]++
-		}
-		for name := range seen {
-			if counts[name] == nil {
-				counts[name] = &PersonnelRecord{Name: name}
-			}
-			counts[name].TotalCalls++
-		}
-	}
-
-	var list []PersonnelRecord
-	for name, r := range counts {
-		r.OnScene = onScene[name]
-		r.NotOnScene = notOnScene[name]
-		if s.TotalCalls > 0 {
-			r.Pct = float64(r.TotalCalls) / float64(s.TotalCalls) * 100
-		}
-		list = append(list, *r)
-	}
-	sort.Slice(list, func(i, j int) bool { return list[i].TotalCalls > list[j].TotalCalls })
-
-	for _, r := range list {
-		s.PersonnelTotalResponding++
-		if r.Pct >= 30 {
-			s.PersonnelHigh = append(s.PersonnelHigh, r)
-		} else if r.Pct >= 20 {
-			s.PersonnelActive = append(s.PersonnelActive, r)
-		} else if r.Pct >= 10 {
-			s.PersonnelGoodStanding = append(s.PersonnelGoodStanding, r)
-		}
-	}
-	s.PersonnelHighCount = len(s.PersonnelHigh)
-	s.PersonnelActiveCount = len(s.PersonnelHigh) + len(s.PersonnelActive)
-	s.PersonnelGoodStandingCount = len(s.PersonnelHigh) + len(s.PersonnelActive) + len(s.PersonnelGoodStanding)
-}
-
-
-func computeMonthly(s *ReportStats, incidents []NormalizedIncident) {
+func computeMonthly(s *ReportStats, incidents []shared.NormalizedIncident) {
 	months := monthsInRange(s.PeriodStart, s.PeriodEnd)
 	if len(months) <= 1 {
 		return
 	}
 	for _, m := range months {
 		ms := MonthlyStats{Month: m.Format("January")}
-		var bucket []NormalizedIncident
+		var bucket []shared.NormalizedIncident
 		mEnd := time.Date(m.Year(), m.Month()+1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second)
 		for _, inc := range incidents {
 			if !inc.PSAPTime.IsZero() && (inc.PSAPTime.Equal(m) || inc.PSAPTime.After(m)) && inc.PSAPTime.Before(mEnd.Add(24*time.Hour)) {
@@ -525,7 +466,7 @@ func monthsInRange(start, end time.Time) []time.Time {
 	return months
 }
 
-func monthlyResponseTimes(incidents []NormalizedIncident) (enRoute, arrival, scene float64) {
+func monthlyResponseTimes(incidents []shared.NormalizedIncident) (enRoute, arrival, scene float64) {
 	var dToE, dToA, onS []float64
 	zero := time.Time{}
 	for _, inc := range incidents {
@@ -542,7 +483,7 @@ func monthlyResponseTimes(incidents []NormalizedIncident) (enRoute, arrival, sce
 	return trimmedMean(dToE), trimmedMean(dToA), trimmedMean(onS)
 }
 
-func countConcurrent(incidents []NormalizedIncident) int {
+func countConcurrent(incidents []shared.NormalizedIncident) int {
 	zero := time.Time{}
 	type interval struct{ start, end time.Time }
 	intervals := make([]interval, 0, len(incidents))

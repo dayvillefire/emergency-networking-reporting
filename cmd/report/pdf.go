@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jung-kurt/gofpdf"
+	"github.com/dayvillefire/emergency-networking-reporting/internal/shared"
 )
 
 // Chart dataset types for PDF chart rendering.
@@ -360,7 +361,7 @@ func addTableRow(pdf *gofpdf.Fpdf, cells []string, header bool) {
 	pdf.SetTextColor(26, 26, 46)
 }
 
-func addPersonnelSection(pdf *gofpdf.Fpdf, title string, records []PersonnelRecord, showDetails bool) {
+func addPersonnelSection(pdf *gofpdf.Fpdf, title string, records []shared.PersonnelRecord, showDetails bool) {
 	ensureSpace(pdf, 25)
 	pdf.SetFont("Helvetica", "B", 9)
 	pdf.SetTextColor(196, 30, 58)

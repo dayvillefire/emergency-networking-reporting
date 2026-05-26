@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dayvillefire/emergency-networking-reporting/enapi"
+	"github.com/dayvillefire/emergency-networking-reporting/internal/shared"
 )
 
 func main() {
-	token := readToken()
+	token := shared.ReadToken()
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "API_TOKEN not found in .env or environment")
 		os.Exit(1)
@@ -79,19 +79,4 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
-}
-
-func readToken() string {
-	// Try .env file first (relative to working directory)
-	data, err := os.ReadFile(".env")
-	if err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "API_TOKEN=") {
-				return strings.TrimPrefix(line, "API_TOKEN=")
-			}
-		}
-	}
-	// Fall back to environment variable
-	return os.Getenv("API_TOKEN")
 }

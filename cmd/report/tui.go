@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dayvillefire/emergency-networking-reporting/enapi"
+	"github.com/dayvillefire/emergency-networking-reporting/internal/shared"
 )
 
 type reportState int
@@ -42,7 +43,7 @@ type fetchProgressMsg struct {
 	incCount     int
 	incElapsed   time.Duration
 	done         bool
-	incidents    []NormalizedIncident
+	incidents    []shared.NormalizedIncident
 	err          error
 }
 
@@ -79,7 +80,7 @@ type model struct {
 	progressCh   chan fetchProgressMsg
 	nameMap      map[string]string
 
-	filteredIncidents []NormalizedIncident
+	filteredIncidents []shared.NormalizedIncident
 
 	stats       *ReportStats
 	periodLabel string
@@ -170,7 +171,7 @@ func fetchAllIncidents(client *enapi.Client, start, end time.Time) (chan fetchPr
 		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
 		var mu sync.Mutex
-		var nerisIncidents, incIncidents []NormalizedIncident
+		var nerisIncidents, incIncidents []shared.NormalizedIncident
 		var nerisErr, incErr error
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -188,7 +189,7 @@ func fetchAllIncidents(client *enapi.Client, start, end time.Time) (chan fetchPr
 					t := inc.IncidentPsapTime.Time
 					if !t.IsZero() && (t.Equal(start) || t.After(start)) && t.Before(end.Add(24*time.Hour)) {
 						mu.Lock()
-						nerisIncidents = append(nerisIncidents, normalizeNerisIncident(inc))
+						nerisIncidents = append(nerisIncidents, shared.NormNerisIncident(inc))
 						mu.Unlock()
 					}
 				}
@@ -220,7 +221,7 @@ func fetchAllIncidents(client *enapi.Client, start, end time.Time) (chan fetchPr
 					t := inc.Psap.Time
 					if !t.IsZero() && (t.Equal(start) || t.After(start)) && t.Before(end.Add(24*time.Hour)) {
 						mu.Lock()
-						incIncidents = append(incIncidents, normalizeIncident(inc))
+						incIncidents = append(incIncidents, shared.NormIncident(inc))
 						count++
 						mu.Unlock()
 					}
