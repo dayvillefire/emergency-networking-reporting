@@ -35,6 +35,15 @@ func LastYear() DateRange {
 	}
 }
 
+// CurrentMonth returns a DateRange from the 1st of the current month through today.
+func CurrentMonth() DateRange {
+	now := time.Now()
+	return DateRange{
+		Start: time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()),
+		End:   now,
+	}
+}
+
 // FilterByDateRange returns incidents whose PSAPTime falls within [start, end].
 func FilterByDateRange(incidents []NormalizedIncident, start, end time.Time) []NormalizedIncident {
 	var out []NormalizedIncident
