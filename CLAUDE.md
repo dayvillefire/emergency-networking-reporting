@@ -15,6 +15,7 @@ make                  # Build Linux + Windows binaries
 go build ./...        # Check compilation
 go run ./cmd/report   # Launch reporting TUI
 go run ./cmd/test     # Integration test (exercises all GET endpoints)
+go run ./cmd/mcp      # MCP server over stdio (--read-only to disable writes)
 ```
 
 ## Architecture
@@ -35,6 +36,10 @@ cmd/report/
   stats.go              ReportStats struct, 9 compute* functions, classification
   tui.go                Bubble Tea model (7 states), spinner, picklists
   html.go               HTML template, GenerateHTML, SaveHTML, displayName
+
+cmd/mcp/
+  main.go               Entry point; --read-only flag; serves MCP over stdio
+  tools.go              registerTools: 15 read + 4 write tools wrapping enapi
 ```
 
 ## Key Patterns
@@ -50,4 +55,5 @@ cmd/report/
 - `github.com/charmbracelet/bubbletea` — TUI framework
 - `github.com/charmbracelet/bubbles` — spinner component
 - `github.com/charmbracelet/lipgloss` — terminal styling
+- `github.com/modelcontextprotocol/go-sdk` — MCP server (cmd/mcp only)
 - No external dependencies in `enapi/` (stdlib only)
