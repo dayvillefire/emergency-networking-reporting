@@ -46,16 +46,22 @@ const shiftHTMLTemplate = `<!DOCTYPE html>
   {{if .TotalCalls}}
   <table>
     <tr>
-      <th>User</th>
+      <th rowspan="2">User</th>
       {{range .Shifts}}
-      <th>{{.}}</th>
+      <th colspan="2">{{.}}</th>
+      {{end}}
+    </tr>
+    <tr>
+      {{range .Shifts}}
+      <th>O/S</th><th>N/S</th>
       {{end}}
     </tr>
     {{range .UserRows}}
     <tr>
       <td>{{.UserName}}</td>
       {{range .Cells}}
-      <td>{{if .CallCount}}{{printf "%.1f" .Pct}}% ({{.CallCount}}){{else}}<span class="empty">&mdash;</span>{{end}}</td>
+      <td>{{if .OnSceneCount}}{{printf "%.1f" .OnScenePct}}% ({{.OnSceneCount}}){{else}}<span class="empty">&mdash;</span>{{end}}</td>
+      <td>{{if .NotOnSceneCount}}{{printf "%.1f" .NotOnScenePct}}% ({{.NotOnSceneCount}}){{else}}<span class="empty">&mdash;</span>{{end}}</td>
       {{end}}
     </tr>
     {{end}}

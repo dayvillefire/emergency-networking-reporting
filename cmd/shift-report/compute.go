@@ -8,11 +8,15 @@ import (
 
 // ShiftUserRecord holds participation stats for one user in one shift within a period.
 type ShiftUserRecord struct {
-	UserName     string
-	Shift        string
-	CallCount    int
-	TotalInShift int
-	Pct          float64
+	UserName        string
+	Shift           string
+	CallCount       int     // combined total (union of on-scene + not-on-scene)
+	OnSceneCount    int     // apparatus calls (from OnScenePersonnel)
+	NotOnSceneCount int     // non-apparatus calls (from NotOnScenePersonnel)
+	OnScenePct      float64 // OnSceneCount / TotalInShift * 100
+	NotOnScenePct   float64 // NotOnSceneCount / TotalInShift * 100
+	TotalInShift    int
+	Pct             float64 // combined percentage
 }
 
 // PeriodResult holds all shift-user records for a single time period.
@@ -42,31 +46,45 @@ func ComputeShiftParticipation(
 		shiftTotals[shift]++
 	}
 
-	// Count per-user per-shift.
+	// Count per-user per-shift, split by on-scene (apparatus) vs not-on-scene.
 	// Key: userName + "||" + shift
-	userShiftCounts := make(map[string]int)
+	userShiftOnScene := make(map[string]int)
+	userShiftNotOnScene := make(map[string]int)
+	userShiftCombined := make(map[string]int)
 	for _, inc := range incidents {
 		shift := inc.Shift
 		if shift == "" {
 			shift = "(unknown)"
 		}
-		// Collect unique resolved names from both on-scene and not-on-scene.
-		seen := make(map[string]bool)
+		// Collect unique names per list (dedup within each list).
+		onScene := make(map[string]bool)
+		notOnScene := make(map[string]bool)
 		for _, raw := range inc.OnScenePersonnel {
 			name := resolveName(raw, nameMap)
 			if selectedUsers[name] {
-				seen[name] = true
+				onScene[name] = true
 			}
 		}
 		for _, raw := range inc.NotOnScenePersonnel {
 			name := resolveName(raw, nameMap)
 			if selectedUsers[name] {
-				seen[name] = true
+				notOnScene[name] = true
 			}
 		}
-		for name := range seen {
-			key := name + "||" + shift
-			userShiftCounts[key]++
+		for name := range onScene {
+			userShiftOnScene[name+"||"+shift]++
+		}
+		for name := range notOnScene {
+			userShiftNotOnScene[name+"||"+shift]++
+		}
+		// Combined = union (dedup across both lists).
+		for name := range onScene {
+			userShiftCombined[name+"||"+shift]++
+		}
+		for name := range notOnScene {
+			if !onScene[name] {
+				userShiftCombined[name+"||"+shift]++
+			}
 		}
 	}
 
@@ -82,7 +100,7 @@ func ComputeShiftParticipation(
 	for name := range selectedUsers {
 		userSet[name] = true
 	}
-	for key := range userShiftCounts {
+	for key := range userShiftCombined {
 		// key is "name||shift"
 		idx := stringsLastIndex(key, "||")
 		if idx >= 0 {
@@ -100,18 +118,28 @@ func ComputeShiftParticipation(
 	for _, user := range users {
 		for _, shift := range shifts {
 			key := user + "||" + shift
-			count := userShiftCounts[key]
+			count := userShiftCombined[key]
+			osCount := userShiftOnScene[key]
+			nsCount := userShiftNotOnScene[key]
 			total := shiftTotals[shift]
 			pct := 0.0
+			osPct := 0.0
+			nsPct := 0.0
 			if total > 0 {
 				pct = float64(count) / float64(total) * 100
+				osPct = float64(osCount) / float64(total) * 100
+				nsPct = float64(nsCount) / float64(total) * 100
 			}
 			records = append(records, ShiftUserRecord{
-				UserName:     user,
-				Shift:        shift,
-				CallCount:    count,
-				TotalInShift: total,
-				Pct:          pct,
+				UserName:        user,
+				Shift:           shift,
+				CallCount:       count,
+				OnSceneCount:    osCount,
+				NotOnSceneCount: nsCount,
+				OnScenePct:      osPct,
+				NotOnScenePct:   nsPct,
+				TotalInShift:    total,
+				Pct:             pct,
 			})
 		}
 	}
