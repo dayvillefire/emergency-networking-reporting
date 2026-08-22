@@ -14,24 +14,24 @@ type ResourceType struct {
 
 // Apparatus represents a fire department apparatus/vehicle.
 type Apparatus struct {
-	ID               string        `json:"id"`
-	Name             string        `json:"name"`
-	Identifier       string        `json:"identifier"`
-	IdentifierType   string        `json:"identifier_type"`
-	ResourceType     *ResourceType `json:"resource_type"`
-	VehicleUnitNumber string       `json:"vehicle_unit_number"`
-	ApparatusUse     FlexString   `json:"apparatus_use"`
-	CallSign         string        `json:"call_sign"`
+	ID                string        `json:"id"`
+	Name              string        `json:"name"`
+	Identifier        string        `json:"identifier"`
+	IdentifierType    string        `json:"identifier_type"`
+	ResourceType      *ResourceType `json:"resource_type"`
+	VehicleUnitNumber string        `json:"vehicle_unit_number"`
+	ApparatusUse      FlexString    `json:"apparatus_use"`
+	CallSign          string        `json:"call_sign"`
 }
 
 // CreateApparatusRequest is the request body for creating an apparatus.
 type CreateApparatusRequest struct {
-	Name             string  `json:"name"`
-	Identifier       *string `json:"identifier,omitempty"`
-	IdentifierType   *string `json:"identifier_type,omitempty"`
-	ResourceTypeCode string  `json:"resource_code"`
+	Name              string  `json:"name"`
+	Identifier        *string `json:"identifier,omitempty"`
+	IdentifierType    *string `json:"identifier_type,omitempty"`
+	ResourceTypeCode  string  `json:"resource_code"`
 	VehicleUnitNumber *string `json:"vehicle_unit_number,omitempty"`
-	CallSign         string  `json:"call_sign"`
+	CallSign          string  `json:"call_sign"`
 }
 
 // ListApparatus returns all apparatus.

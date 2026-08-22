@@ -10,17 +10,17 @@ import (
 // NormNerisIncident converts a NERIS incident to the normalized type.
 func NormNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 	n := NormalizedIncident{
-		PSAPTime:           inc.IncidentPsapTime.Time,
-		DispatchTime:       inc.IncidentDispatchTime.Time,
-		EnrouteTime:        inc.IncidentEnrouteTime.Time,
-		ArrivalTime:        inc.IncidentArrivalTime.Time,
-		ClearTime:          inc.IncidentClearTime.Time,
-		Shift:              string(inc.IncidentShift),
-		Station:            string(inc.IncidentStation),
-		District:           string(inc.IncidentDistrict),
-		DispatchedAs:       string(inc.IncidentDispatchedAs),
+		PSAPTime:            inc.IncidentPsapTime.Time,
+		DispatchTime:        inc.IncidentDispatchTime.Time,
+		EnrouteTime:         inc.IncidentEnrouteTime.Time,
+		ArrivalTime:         inc.IncidentArrivalTime.Time,
+		ClearTime:           inc.IncidentClearTime.Time,
+		Shift:               string(inc.IncidentShift),
+		Station:             string(inc.IncidentStation),
+		District:            string(inc.IncidentDistrict),
+		DispatchedAs:        string(inc.IncidentDispatchedAs),
 		PrimaryIncidentType: string(inc.PrimaryIncidentType),
-		IncidentTypes:      inc.IncidentType,
+		IncidentTypes:       inc.IncidentType,
 	}
 
 	mg := strings.ToLower(string(inc.MutualAidGivenOrReceived))
@@ -71,16 +71,16 @@ func NormNerisIncident(inc enapi.NerisIncident) NormalizedIncident {
 // NormIncident converts a legacy NFIRS incident to the normalized type.
 func NormIncident(inc enapi.Incident) NormalizedIncident {
 	n := NormalizedIncident{
-		PSAPTime:           inc.Psap.Time,
-		EnrouteTime:        inc.Enroute.Time,
-		ArrivalTime:        inc.Arrival.Time,
-		ClearTime:          inc.LastUnitCleared.Time,
-		Shift:              inc.Shift,
-		Station:            inc.Station,
-		District:           inc.District,
-		DispatchedAs:       inc.DispatchedAs,
+		PSAPTime:            inc.Psap.Time,
+		EnrouteTime:         inc.Enroute.Time,
+		ArrivalTime:         inc.Arrival.Time,
+		ClearTime:           inc.LastUnitCleared.Time,
+		Shift:               inc.Shift,
+		Station:             inc.Station,
+		District:            inc.District,
+		DispatchedAs:        inc.DispatchedAs,
 		PrimaryIncidentType: inc.IncidentType,
-		IncidentTypes:      []string{inc.IncidentType},
+		IncidentTypes:       []string{inc.IncidentType},
 	}
 
 	for _, u := range inc.Units {

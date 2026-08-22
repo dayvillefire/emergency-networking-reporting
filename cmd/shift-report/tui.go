@@ -48,15 +48,15 @@ type srModel struct {
 	err     error
 
 	// User selection
-	allUsers      []string         // all names in "Last, First" format
-	selected      map[int]bool     // index -> selected
-	cursor        int
-	nameMap       map[string]string
+	allUsers []string     // all names in "Last, First" format
+	selected map[int]bool // index -> selected
+	cursor   int
+	nameMap  map[string]string
 
 	// Results
-	periods    []PeriodResult
-	htmlPath   string
-	pdfPath    string
+	periods  []PeriodResult
+	htmlPath string
+	pdfPath  string
 
 	// Options
 	outputHTML bool

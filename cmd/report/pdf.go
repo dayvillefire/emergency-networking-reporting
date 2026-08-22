@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jung-kurt/gofpdf"
 	"github.com/dayvillefire/emergency-networking-reporting/internal/shared"
+	"github.com/jung-kurt/gofpdf"
 )
 
 // Chart dataset types for PDF chart rendering.
@@ -448,7 +448,7 @@ func drawPDFBarChart(pdf *gofpdf.Fpdf, title string, months []string, datasets [
 	// Draw axes.
 	pdf.SetDrawColor(180, 180, 180)
 	pdf.SetLineWidth(0.3)
-	pdf.Line(chartLeft, chartTop, chartLeft, chartTop+chartHeight)     // Y axis
+	pdf.Line(chartLeft, chartTop, chartLeft, chartTop+chartHeight)              // Y axis
 	pdf.Line(chartLeft, chartTop+chartHeight, chartRight, chartTop+chartHeight) // X axis
 
 	// Y-axis ticks and labels.
@@ -589,7 +589,7 @@ func drawPDFLineChart(pdf *gofpdf.Fpdf, title string, months []string, datasets 
 	// Draw axes.
 	pdf.SetDrawColor(180, 180, 180)
 	pdf.SetLineWidth(0.3)
-	pdf.Line(chartLeft, chartTop, chartLeft, chartTop+chartHeight)       // Y axis
+	pdf.Line(chartLeft, chartTop, chartLeft, chartTop+chartHeight)              // Y axis
 	pdf.Line(chartLeft, chartTop+chartHeight, chartRight, chartTop+chartHeight) // X axis
 
 	// Y-axis ticks and labels.

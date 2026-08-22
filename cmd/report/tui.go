@@ -59,17 +59,17 @@ type model struct {
 	cursor       int
 	selectedDept string
 
-	availableYears []int
-	selectedYear   int
-	yearCursor     int
-	scopeCursor    int
-	scopes         []string
-	selectedScope         string
-	showPersonnelDetails  bool
-	showCharts            bool
-	optionsCursor         int
-	periodStart           time.Time
-	periodEnd             time.Time
+	availableYears       []int
+	selectedYear         int
+	yearCursor           int
+	scopeCursor          int
+	scopes               []string
+	selectedScope        string
+	showPersonnelDetails bool
+	showCharts           bool
+	optionsCursor        int
+	periodStart          time.Time
+	periodEnd            time.Time
 
 	nerisPages   int
 	nerisCount   int
@@ -116,16 +116,16 @@ func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) mo
 		years = append(years, y)
 	}
 	return model{
-		client:         client,
-		now:            now,
-		state:          stateStart,
-		spinner:        s,
-		selectedYear:          now.Year(),
-		availableYears:        years,
-		nameMap:               nameMap,
-		showPersonnelDetails:  true,
-		showCharts:            true,
-		optionsCursor:         0,
+		client:               client,
+		now:                  now,
+		state:                stateStart,
+		spinner:              s,
+		selectedYear:         now.Year(),
+		availableYears:       years,
+		nameMap:              nameMap,
+		showPersonnelDetails: true,
+		showCharts:           true,
+		optionsCursor:        0,
 	}
 }
 
@@ -357,9 +357,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleDeptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
-		if m.cursor > 0 { m.cursor-- }
+		if m.cursor > 0 {
+			m.cursor--
+		}
 	case "down", "j":
-		if m.cursor < len(m.stations)-1 { m.cursor++ }
+		if m.cursor < len(m.stations)-1 {
+			m.cursor++
+		}
 	case "enter":
 		m.selectedDept = m.stations[m.cursor]
 		m.state = stateSelectingYear
@@ -370,9 +374,13 @@ func (m model) handleDeptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleYearKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
-		if m.yearCursor > 0 { m.yearCursor-- }
+		if m.yearCursor > 0 {
+			m.yearCursor--
+		}
 	case "down", "j":
-		if m.yearCursor < len(m.availableYears)-1 { m.yearCursor++ }
+		if m.yearCursor < len(m.availableYears)-1 {
+			m.yearCursor++
+		}
 	case "enter":
 		m.selectedYear = m.availableYears[m.yearCursor]
 		m.scopes = []string{"Full Year", "Fiscal Year", "Q1", "Q2", "Q3", "Q4"}
@@ -386,9 +394,13 @@ func (m model) handleYearKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleScopeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
-		if m.scopeCursor > 0 { m.scopeCursor-- }
+		if m.scopeCursor > 0 {
+			m.scopeCursor--
+		}
 	case "down", "j":
-		if m.scopeCursor < len(m.scopes)-1 { m.scopeCursor++ }
+		if m.scopeCursor < len(m.scopes)-1 {
+			m.scopeCursor++
+		}
 	case "enter":
 		m.selectedScope = m.scopes[m.scopeCursor]
 		m.periodStart, m.periodEnd = computePeriodRange(m.selectedYear, m.selectedScope)
@@ -474,12 +486,17 @@ func processStats(m model) tea.Cmd {
 		if deptName == "All Departments" {
 			counts := make(map[string]int)
 			for _, inc := range m.filteredIncidents {
-				if inc.Station != "" { counts[inc.Station]++ }
+				if inc.Station != "" {
+					counts[inc.Station]++
+				}
 			}
 			maxCount := 0
 			majority := "Fire Department"
 			for st, c := range counts {
-				if c > maxCount { maxCount = c; majority = st }
+				if c > maxCount {
+					maxCount = c
+					majority = st
+				}
 			}
 			deptName = majority
 		}
@@ -554,9 +571,13 @@ func (m model) viewPicker(header string, items []string, cursor int) string {
 	b.WriteString(titleStyle.Render(header))
 	b.WriteString("\n")
 	start := 0
-	if cursor > 5 { start = cursor - 5 }
+	if cursor > 5 {
+		start = cursor - 5
+	}
 	end := start + 12
-	if end > len(items) { end = len(items) }
+	if end > len(items) {
+		end = len(items)
+	}
 	if start > 0 {
 		b.WriteString(fmt.Sprintf("  ↑ %d more...\n", start))
 	}

@@ -8,25 +8,25 @@ import (
 
 // CrewUser represents a user assigned to a crew schedule.
 type CrewUser struct {
-	ID               int    `json:"id"`
-	FirstName        string `json:"first_name"`
-	LastName         string `json:"last_name"`
-	PersonnelID      string `json:"personnel_id"`
-	Start            Time   `json:"start"`
-	End              Time   `json:"end"`
-	Notes            string `json:"notes"`
+	ID                int    `json:"id"`
+	FirstName         string `json:"first_name"`
+	LastName          string `json:"last_name"`
+	PersonnelID       string `json:"personnel_id"`
+	Start             Time   `json:"start"`
+	End               Time   `json:"end"`
+	Notes             string `json:"notes"`
 	CertificationName string `json:"certification_name"`
-	IsHazMat         bool   `json:"isHazMat"`
-	Rank             string `json:"rank"`
+	IsHazMat          bool   `json:"isHazMat"`
+	Rank              string `json:"rank"`
 }
 
 // CrewEquipment represents equipment assigned to a crew schedule.
 type CrewEquipment struct {
-	Name             string     `json:"name"`
-	CallSign         string     `json:"call_sign"`
-	PrimaryAction    string     `json:"primary_action"`
-	SecondaryAction  string     `json:"secondary_action"`
-	Users            []CrewUser `json:"users"`
+	Name            string     `json:"name"`
+	CallSign        string     `json:"call_sign"`
+	PrimaryAction   string     `json:"primary_action"`
+	SecondaryAction string     `json:"secondary_action"`
+	Users           []CrewUser `json:"users"`
 }
 
 // CrewSchedule represents a crew schedule record.
@@ -40,10 +40,10 @@ type CrewSchedule struct {
 
 // CrewEquipmentRequest represents equipment in a create/update request.
 type CrewEquipmentRequest struct {
-	CallSign        string              `json:"call_sign"`
-	PrimaryAction   *string             `json:"primary_action,omitempty"`
-	SecondaryAction *string             `json:"secondary_action,omitempty"`
-	Users           []CrewUserRequest   `json:"users"`
+	CallSign        string            `json:"call_sign"`
+	PrimaryAction   *string           `json:"primary_action,omitempty"`
+	SecondaryAction *string           `json:"secondary_action,omitempty"`
+	Users           []CrewUserRequest `json:"users"`
 }
 
 // CrewUserRequest represents a user in a create/update request.
@@ -57,9 +57,9 @@ type CrewUserRequest struct {
 
 // CreateCrewScheduleRequest is the request body for creating/updating a crew schedule.
 type CreateCrewScheduleRequest struct {
-	Start     Time                  `json:"start"`
-	End       Time                  `json:"end"`
-	Notes     *string               `json:"notes,omitempty"`
+	Start     Time                   `json:"start"`
+	End       Time                   `json:"end"`
+	Notes     *string                `json:"notes,omitempty"`
 	Equipment []CrewEquipmentRequest `json:"equipment"`
 }
 

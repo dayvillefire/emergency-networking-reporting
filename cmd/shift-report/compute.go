@@ -20,8 +20,8 @@ type PeriodResult struct {
 	Label      string
 	Range      shared.DateRange
 	TotalCalls int
-	Shifts     []string               // ordered shift names
-	Records    []ShiftUserRecord      // sorted by UserName then Shift
+	Shifts     []string          // ordered shift names
+	Records    []ShiftUserRecord // sorted by UserName then Shift
 }
 
 // ComputeShiftParticipation calculates per-shift call percentages for each selected user
