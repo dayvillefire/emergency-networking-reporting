@@ -58,12 +58,21 @@ func saveShiftPDF(periods []PeriodResult) (string, error) {
 		if shiftColW > 40 {
 			shiftColW = 40
 		}
+		subColW := shiftColW / 2
 
-		// Header row
+		// Header row 1: shift names spanning O/S+N/S
 		pdf.SetFillColor(240, 240, 240)
 		pdf.CellFormat(userColW, 7, "User", "1", 0, "L", true, 0, "")
 		for _, shift := range pr.Shifts {
 			pdf.CellFormat(shiftColW, 7, safeText(shift), "1", 0, "C", true, 0, "")
+		}
+		pdf.Ln(-1)
+
+		// Header row 2: O/S / N/S sub-headers
+		pdf.CellFormat(userColW, 7, "", "1", 0, "L", true, 0, "")
+		for range pr.Shifts {
+			pdf.CellFormat(subColW, 7, "O/S", "1", 0, "C", true, 0, "")
+			pdf.CellFormat(subColW, 7, "N/S", "1", 0, "C", true, 0, "")
 		}
 		pdf.Ln(-1)
 
@@ -82,15 +91,26 @@ func saveShiftPDF(periods []PeriodResult) (string, error) {
 					pdf.CellFormat(shiftColW, 7, safeText(shift), "1", 0, "C", true, 0, "")
 				}
 				pdf.Ln(-1)
+				pdf.CellFormat(userColW, 7, "", "1", 0, "L", true, 0, "")
+				for range pr.Shifts {
+					pdf.CellFormat(subColW, 7, "O/S", "1", 0, "C", true, 0, "")
+					pdf.CellFormat(subColW, 7, "N/S", "1", 0, "C", true, 0, "")
+				}
+				pdf.Ln(-1)
 				pdf.SetFont("Helvetica", "", 8)
 			}
 			pdf.CellFormat(userColW, 6, safeText(row.UserName), "0", 0, "L", false, 0, "")
 			for _, cell := range row.Cells {
-				text := "—"
-				if cell.CallCount > 0 {
-					text = fmt.Sprintf("%.1f%% (%d)", cell.Pct, cell.CallCount)
+				osText := "—"
+				if cell.OnSceneCount > 0 {
+					osText = fmt.Sprintf("%.1f%% (%d)", cell.OnScenePct, cell.OnSceneCount)
 				}
-				pdf.CellFormat(shiftColW, 6, text, "0", 0, "C", false, 0, "")
+				nsText := "—"
+				if cell.NotOnSceneCount > 0 {
+					nsText = fmt.Sprintf("%.1f%% (%d)", cell.NotOnScenePct, cell.NotOnSceneCount)
+				}
+				pdf.CellFormat(subColW, 6, osText, "0", 0, "C", false, 0, "")
+				pdf.CellFormat(subColW, 6, nsText, "0", 0, "C", false, 0, "")
 			}
 			pdf.Ln(-1)
 			// Draw subtle row separator

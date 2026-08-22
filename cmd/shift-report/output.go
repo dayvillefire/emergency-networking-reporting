@@ -34,10 +34,15 @@ func formatOnePeriod(pr PeriodResult) string {
 
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 
-	// Header: user name column + one column per shift
+	// Two header rows: shift name (spanning O/S+N/S), then O/S / N/S labels.
 	fmt.Fprint(w, "\t")
 	for _, shift := range pr.Shifts {
-		fmt.Fprintf(w, "%s\t", shift)
+		fmt.Fprintf(w, "%s\t\t", shift)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprint(w, "\t")
+	for range pr.Shifts {
+		fmt.Fprint(w, "O/S\tN/S\t")
 	}
 	fmt.Fprintln(w)
 
@@ -46,10 +51,15 @@ func formatOnePeriod(pr PeriodResult) string {
 	for _, row := range userRows {
 		fmt.Fprintf(w, "%s\t", row.UserName)
 		for _, cell := range row.Cells {
-			if cell.CallCount == 0 {
+			if cell.OnSceneCount == 0 {
 				fmt.Fprint(w, "—\t")
 			} else {
-				fmt.Fprintf(w, "%.1f%% (%d)\t", cell.Pct, cell.CallCount)
+				fmt.Fprintf(w, "%.1f%% (%d)\t", cell.OnScenePct, cell.OnSceneCount)
+			}
+			if cell.NotOnSceneCount == 0 {
+				fmt.Fprint(w, "—\t")
+			} else {
+				fmt.Fprintf(w, "%.1f%% (%d)\t", cell.NotOnScenePct, cell.NotOnSceneCount)
 			}
 		}
 		fmt.Fprintln(w)
@@ -109,7 +119,10 @@ func writeShiftCSV(periods []PeriodResult) {
 	// Header
 	header := []string{"period", "period_start", "period_end", "total_calls", "user"}
 	for _, shift := range allShifts {
-		header = append(header, snakeCase(shift)+"_pct", snakeCase(shift)+"_calls")
+		header = append(header,
+			snakeCase(shift)+"_os_pct", snakeCase(shift)+"_os_calls",
+			snakeCase(shift)+"_ns_pct", snakeCase(shift)+"_ns_calls",
+		)
 	}
 	w.Write(header)
 
@@ -127,13 +140,16 @@ func writeShiftCSV(periods []PeriodResult) {
 				found := false
 				for _, cell := range row.Cells {
 					if cell.Shift == shift {
-						line = append(line, fmt.Sprintf("%.1f", cell.Pct), fmt.Sprintf("%d", cell.CallCount))
+						line = append(line,
+							fmt.Sprintf("%.1f", cell.OnScenePct), fmt.Sprintf("%d", cell.OnSceneCount),
+							fmt.Sprintf("%.1f", cell.NotOnScenePct), fmt.Sprintf("%d", cell.NotOnSceneCount),
+						)
 						found = true
 						break
 					}
 				}
 				if !found {
-					line = append(line, "0.0", "0")
+					line = append(line, "0.0", "0", "0.0", "0")
 				}
 			}
 			w.Write(line)
