@@ -13,11 +13,18 @@ import (
 )
 
 func main() {
+	configPath := flag.String("config", "", "path to report YAML config (default report-config.yaml, or $REPORT_CONFIG)")
 	flag.Parse()
 
 	token := shared.ReadToken()
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "API_TOKEN not found in .env or environment")
+		os.Exit(1)
+	}
+
+	cfg, err := LoadConfig(resolveConfigPath(*configPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -29,7 +36,7 @@ func main() {
 	nameMap := shared.BuildNameMap(client)
 
 	now := time.Now()
-	p := tea.NewProgram(newModel(client, now, nameMap), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(client, now, nameMap, cfg), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

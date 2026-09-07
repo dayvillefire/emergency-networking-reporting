@@ -23,8 +23,14 @@ type MonthlyStats struct {
 	Hazmat            int
 	MVA               int
 	CO                int
-	DroneTeam         int
-	RehabTeam         int
+	TeamCounts        map[string]int // per-team monthly counts, keyed by team name
+}
+
+// TeamStat holds the period counts for one configured team.
+type TeamStat struct {
+	Name  string
+	Count int
+	Pct   float64
 }
 
 // ReportStats holds all computed statistics for a reporting period.
@@ -76,10 +82,7 @@ type ReportStats struct {
 	COPct       float64
 
 	// Section 9: Special unit responses
-	DroneTeamCount int
-	DroneTeamPct   float64
-	RehabTeamCount int
-	RehabTeamPct   float64
+	Teams []TeamStat
 
 	PersonnelHigh              []shared.PersonnelRecord
 	PersonnelHighCount         int
@@ -94,7 +97,7 @@ type ReportStats struct {
 }
 
 // ComputeStats runs all report calculations on the filtered incidents.
-func ComputeStats(incidents []shared.NormalizedIncident, deptName string, start, end time.Time, nameMap map[string]string) *ReportStats {
+func ComputeStats(incidents []shared.NormalizedIncident, deptName string, start, end time.Time, nameMap map[string]string, teams []Team) *ReportStats {
 	s := &ReportStats{
 		PeriodStart:             start,
 		PeriodEnd:               end,
@@ -117,7 +120,7 @@ func ComputeStats(incidents []shared.NormalizedIncident, deptName string, start,
 	computeEMSMutualAidByDistrict(s, incidents)
 	computeByShift(s, incidents)
 	computeSpecialTypes(s, incidents)
-	computeSpecialUnits(s, incidents)
+	computeSpecialUnits(s, incidents, teams)
 	pr := shared.ComputePersonnelResponse(incidents, nameMap)
 	s.PersonnelHigh = pr.High
 	s.PersonnelActive = pr.Active
@@ -126,7 +129,7 @@ func ComputeStats(incidents []shared.NormalizedIncident, deptName string, start,
 	s.PersonnelActiveCount = len(pr.High) + len(pr.Active)
 	s.PersonnelGoodStandingCount = len(pr.High) + len(pr.Active) + len(pr.GoodStanding)
 	s.PersonnelTotalResponding = len(pr.High) + len(pr.Active) + len(pr.GoodStanding)
-	computeMonthly(s, incidents)
+	computeMonthly(s, incidents, teams)
 
 	return s
 }
@@ -382,37 +385,37 @@ func computeSpecialTypes(s *ReportStats, incidents []shared.NormalizedIncident) 
 	}
 }
 
-func computeSpecialUnits(s *ReportStats, incidents []shared.NormalizedIncident) {
+func computeSpecialUnits(s *ReportStats, incidents []shared.NormalizedIncident, teams []Team) {
+	s.Teams = make([]TeamStat, len(teams))
+	for i, team := range teams {
+		s.Teams[i].Name = team.Name
+	}
 	for _, inc := range incidents {
-		for _, name := range inc.UnitNames {
-			if strings.Contains(strings.ToUpper(name), "UAV163") {
-				s.DroneTeamCount++
-				break
-			}
-		}
-		for _, name := range inc.UnitNames {
-			if strings.Contains(strings.ToUpper(name), "S263") ||
-				strings.Contains(strings.ToUpper(name), "REHAB163") {
-				s.RehabTeamCount++
-				break
+		for i, team := range teams {
+			for _, name := range inc.UnitNames {
+				if teamMatches(name, team) {
+					s.Teams[i].Count++
+					break
+				}
 			}
 		}
 	}
 	if s.TotalCalls > 0 {
-		s.DroneTeamPct = float64(s.DroneTeamCount) / float64(s.TotalCalls) * 100
-		s.RehabTeamPct = float64(s.RehabTeamCount) / float64(s.TotalCalls) * 100
+		for i := range s.Teams {
+			s.Teams[i].Pct = float64(s.Teams[i].Count) / float64(s.TotalCalls) * 100
+		}
 	}
 }
 
 // ---- Monthly ----
 
-func computeMonthly(s *ReportStats, incidents []shared.NormalizedIncident) {
+func computeMonthly(s *ReportStats, incidents []shared.NormalizedIncident, teams []Team) {
 	months := monthsInRange(s.PeriodStart, s.PeriodEnd)
 	if len(months) <= 1 {
 		return
 	}
 	for _, m := range months {
-		ms := MonthlyStats{Month: m.Format("January")}
+		ms := MonthlyStats{Month: m.Format("January"), TeamCounts: make(map[string]int, len(teams))}
 		var bucket []shared.NormalizedIncident
 		mEnd := time.Date(m.Year(), m.Month()+1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second)
 		for _, inc := range incidents {
@@ -464,16 +467,12 @@ func computeMonthly(s *ReportStats, incidents []shared.NormalizedIncident) {
 			}
 		}
 		for _, inc := range bucket {
-			for _, name := range inc.UnitNames {
-				if strings.Contains(strings.ToUpper(name), "UAV163") {
-					ms.DroneTeam++
-					break
-				}
-			}
-			for _, name := range inc.UnitNames {
-				if strings.Contains(strings.ToUpper(name), "S263") {
-					ms.RehabTeam++
-					break
+			for _, team := range teams {
+				for _, name := range inc.UnitNames {
+					if teamMatches(name, team) {
+						ms.TeamCounts[team.Name]++
+						break
+					}
 				}
 			}
 		}

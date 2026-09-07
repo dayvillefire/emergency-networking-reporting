@@ -79,6 +79,7 @@ type model struct {
 	incElapsed   time.Duration
 	progressCh   chan fetchProgressMsg
 	nameMap      map[string]string
+	cfg          *Config
 
 	filteredIncidents []shared.NormalizedIncident
 
@@ -107,7 +108,7 @@ var months = []string{
 	"July", "August", "September", "October", "November", "December",
 }
 
-func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) model {
+func newModel(client *enapi.Client, now time.Time, nameMap map[string]string, cfg *Config) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#c41e3a"))
@@ -123,6 +124,7 @@ func newModel(client *enapi.Client, now time.Time, nameMap map[string]string) mo
 		selectedYear:         now.Year(),
 		availableYears:       years,
 		nameMap:              nameMap,
+		cfg:                  cfg,
 		showPersonnelDetails: true,
 		showCharts:           true,
 		optionsCursor:        0,
@@ -502,7 +504,7 @@ func processStats(m model) tea.Cmd {
 		}
 		periodLabel := periodString(m.periodStart, m.periodEnd)
 		showCharts := m.showCharts
-		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd, m.nameMap)
+		stats := ComputeStats(m.filteredIncidents, deptName, m.periodStart, m.periodEnd, m.nameMap, m.cfg.Teams)
 		htmlPath, err := SaveHTML(stats, periodLabel, showCharts, m.showPersonnelDetails)
 		if err != nil {
 			return statsErrMsg{err}
@@ -662,8 +664,11 @@ func (m model) viewDone() string {
 		m.stats.HazmatCount, m.stats.MVACount, m.stats.COCount))
 	b.WriteString(fmt.Sprintf("  Personnel — %d total, High: %d, Active: %d, Good Standing: %d\n",
 		m.stats.PersonnelTotalResponding, m.stats.PersonnelHighCount, m.stats.PersonnelActiveCount, m.stats.PersonnelGoodStandingCount))
-	b.WriteString(fmt.Sprintf("  Special Units — Drone: %d  Rehab: %d\n",
-		m.stats.DroneTeamCount, m.stats.RehabTeamCount))
+	var unitParts []string
+	for _, t := range m.stats.Teams {
+		unitParts = append(unitParts, fmt.Sprintf("%s: %d", t.Name, t.Count))
+	}
+	b.WriteString(fmt.Sprintf("  Special Units — %s\n", strings.Join(unitParts, "  ")))
 	if m.pdfPath != "" {
 		b.WriteString(fmt.Sprintf("\n  %s\n", successStyle.Render(fmt.Sprintf("PDF report saved:  %s", m.pdfPath))))
 	}
