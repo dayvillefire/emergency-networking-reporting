@@ -1,7 +1,10 @@
 .env
 *.html
 *.pdf
-en-report
+/en-mcp
+/en-report
+/en-responder-stats
+/en-shift-report
 en-report.exe
 .playwright-mcp/
 .remember/
