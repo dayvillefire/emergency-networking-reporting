@@ -86,8 +86,10 @@ const htmlTemplate = `<!DOCTYPE html>
 
 <script>
 const monthly = {{.ChartJSON}};
+const teamNames = {{.TeamNamesJSON}};
+const teamColors = {{.TeamColorsJSON}};
 const months = monthly.map(m => m.Month);
-const colors = { ems: '#2563eb', fire: '#c41e3a', dr: '#22c55e', da: '#f59e0b', os: '#8b5cf6', given: '#22c55e', received: '#f59e0b', hazmat: '#ef4444', mva: '#f97316', co: '#6366f1', drone: '#06b6d4', rehab: '#a855f7' };
+const colors = { ems: '#2563eb', fire: '#c41e3a', dr: '#22c55e', da: '#f59e0b', os: '#8b5cf6', given: '#22c55e', received: '#f59e0b', hazmat: '#ef4444', mva: '#f97316', co: '#6366f1' };
 
 function mkLine(id, label, data, color) {
   new Chart(document.getElementById(id), {
@@ -126,10 +128,11 @@ mkBar('chart-special-types', [
   { label: 'MVA', data: monthly.map(m => m.MVA), backgroundColor: colors.mva },
   { label: 'CO', data: monthly.map(m => m.CO), backgroundColor: colors.co }
 ]);
-mkBar('chart-special-units', [
-  { label: 'Drone (UAV163)', data: monthly.map(m => m.DroneTeam), backgroundColor: colors.drone },
-  { label: 'Rehab (S263)', data: monthly.map(m => m.RehabTeam), backgroundColor: colors.rehab }
-]);
+mkBar('chart-special-units', teamNames.map((name, i) => ({
+  label: name,
+  data: monthly.map(m => ((m.TeamCounts || {})[name] || 0)),
+  backgroundColor: teamColors[i % teamColors.length]
+})));
 </script>
 {{end}}
 
@@ -199,8 +202,9 @@ mkBar('chart-special-units', [
   <h2>Special Unit Responses</h2>
   <table>
     <tr><th>Unit</th><th>Count</th><th>%</th></tr>
-    <tr><td>Drone Team (UAV163)</td><td>{{.DroneTeamCount}}</td><td>{{printf "%.1f" .DroneTeamPct}}%</td></tr>
-    <tr><td>Rehab Team (S263)</td><td>{{.RehabTeamCount}}</td><td>{{printf "%.1f" .RehabTeamPct}}%</td></tr>
+    {{range .Teams}}
+    <tr><td>{{.Name}}</td><td>{{.Count}}</td><td>{{printf "%.1f" .Pct}}%</td></tr>
+    {{end}}
   </table>
 </section>
 
@@ -283,13 +287,18 @@ func GenerateHTML(s *ReportStats, periodLabel string, showCharts bool, showPerso
 		chartJSON = string(b)
 	}
 
+	teamNamesJSON, _ := json.Marshal(teamNames(s.Teams))
+	teamColorsJSON, _ := json.Marshal(teamColors(len(s.Teams)))
+
 	data := struct {
 		*ReportStats
 		PeriodLabel          string
 		ShowCharts           bool
 		ShowPersonnelDetails bool
 		ChartJSON            template.JS
-	}{s, periodLabel, showCharts, showPersonnelDetails, template.JS(chartJSON)}
+		TeamNamesJSON        template.JS
+		TeamColorsJSON       template.JS
+	}{s, periodLabel, showCharts, showPersonnelDetails, template.JS(chartJSON), template.JS(teamNamesJSON), template.JS(teamColorsJSON)}
 
 	tmpl, err := template.New("report").Funcs(funcMap).Parse(htmlTemplate)
 	if err != nil {
@@ -313,6 +322,14 @@ func SaveHTML(s *ReportStats, periodLabel string, showCharts bool, showPersonnel
 		return "", fmt.Errorf("write file: %w", err)
 	}
 	return filename, nil
+}
+
+func teamNames(teams []TeamStat) []string {
+	out := make([]string, len(teams))
+	for i, t := range teams {
+		out[i] = t.Name
+	}
+	return out
 }
 
 func sanitizeFilename(name string) string {
