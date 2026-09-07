@@ -148,11 +148,14 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 			mvaData[i] = float64(m.MVA)
 			coData[i] = float64(m.CO)
 		}
-		droneData := make([]float64, len(s.Monthly))
-		rehabData := make([]float64, len(s.Monthly))
-		for i, m := range s.Monthly {
-			droneData[i] = float64(m.DroneTeam)
-			rehabData[i] = float64(m.RehabTeam)
+		teamDatasets := make([]pdfBarDataset, 0, len(s.Teams))
+		for i, t := range s.Teams {
+			data := make([]float64, len(s.Monthly))
+			for j, m := range s.Monthly {
+				data[j] = float64(m.TeamCounts[t.Name])
+			}
+			c := teamColorPaletteRGB[i%len(teamColorPaletteRGB)]
+			teamDatasets = append(teamDatasets, pdfBarDataset{Label: t.Name, Data: data, Color: c})
 		}
 		drawSideBySide(pdf, 65,
 			func() {
@@ -163,10 +166,7 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 				}, chartLeftHalfL, chartWidthHalf, chartHeightHalf, true)
 			},
 			func() {
-				drawPDFBarChart(pdf, "Special Unit Responses", months, []pdfBarDataset{
-					{Label: "Drone (UAV163)", Data: droneData, Color: [3]int{6, 182, 212}},
-					{Label: "Rehab (S263)", Data: rehabData, Color: [3]int{168, 85, 247}},
-				}, chartLeftHalfR, chartWidthHalf, chartHeightHalf, true)
+				drawPDFBarChart(pdf, "Special Unit Responses", months, teamDatasets, chartLeftHalfR, chartWidthHalf, chartHeightHalf, true)
 			},
 		)
 	}
@@ -234,8 +234,9 @@ func SavePDF(s *ReportStats, periodLabel string, showCharts, showPersonnelDetail
 	// ---- Special Units ----
 	sectionHeader(pdf, "Special Unit Responses")
 	addTableRow(pdf, []string{"Unit", "Count", "%"}, true)
-	addTableRow(pdf, []string{"Drone Team (UAV163)", fmt.Sprintf("%d", s.DroneTeamCount), fmt.Sprintf("%.1f%%", s.DroneTeamPct)}, false)
-	addTableRow(pdf, []string{"Rehab Team (S263)", fmt.Sprintf("%d", s.RehabTeamCount), fmt.Sprintf("%.1f%%", s.RehabTeamPct)}, false)
+	for _, t := range s.Teams {
+		addTableRow(pdf, []string{t.Name, fmt.Sprintf("%d", t.Count), fmt.Sprintf("%.1f%%", t.Pct)}, false)
+	}
 
 	// ---- Personnel Response ----
 	ensureSpace(pdf, 35)
