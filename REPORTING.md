@@ -16,6 +16,6 @@ Create a bounded report (year, quarter, or month) that contains the following in
   - Hazardous materials calls
   - Motor vehicle accidents
   - Carbon Monoxide emergencies (including those where nothing was found)
-* Total number of calls that (including percentage):
-  - Drone Team Calls: The unit UAV163 responded to
-  - Rehab Team Calls: The unit S263 responded to
+* Total number of calls (including percentage) per configured special unit/team.
+  Teams are defined in `report-config.yaml` (name + unit-name match patterns);
+  a call counts once per team when any responding unit name matches a pattern.

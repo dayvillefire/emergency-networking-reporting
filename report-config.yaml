@@ -1,0 +1,8 @@
+teams:
+  - name: Drone Team
+    patterns:
+      - UAV163
+  - name: Rehab Team
+    patterns:
+      - S263
+      - REHAB163
